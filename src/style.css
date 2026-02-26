@@ -1,136 +1,16 @@
-/* Zmienne globalne z Twojej aplikacji Swift */
-:root {
-  --bg-system-grouped: #f2f2f7; /* Jasny motyw */
-  --bg-secondary-grouped: #ffffff;
-  --text-primary: #000000;
-  --text-secondary: #8e8e93;
-  --accent-blue: #3498db;
-  --accent-green: #2ecc71;
-  --accent-red: #e74c3c;
-  --tab-bar-bg: rgba(255, 255, 255, 0.9);
-}
+@import "tailwindcss";
 
-/* Wymuszamy Ciemny Motyw (odpowiednik trybu nocnego na iOS) */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg-system-grouped: #000000;
-    --bg-secondary-grouped: #1c1c1e;
-    --text-primary: #ffffff;
-    --tab-bar-bg: rgba(28, 28, 30, 0.9);
-  }
-}
-
-/* Reset systemowy pod telefony */
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  -webkit-tap-highlight-color: transparent; /* Usuwa brzydkie niebieskie tło klikania na Androidzie/iOS */
-}
-
+/* To zabezpiecza całą przeglądarkę przed białym tłem */
 body {
-  background-color: var(--bg-system-grouped);
-  color: var(--text-primary);
-  overflow: hidden; /* Przewijanie będzie wewnątrz elementu <main> */
-}
-
-/* --- Odpowiednik MainTabView --- */
-.tab-bar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  height: 85px; /* Wysokość na iOS wraz ze strefą Home Indicator */
-  background-color: var(--tab-bar-bg);
-  backdrop-filter: blur(20px); /* Efekt szronu z iOS */
-  -webkit-backdrop-filter: blur(20px);
-  border-top: 1px solid rgba(142, 142, 147, 0.3);
-  display: flex;
-  justify-content: space-around;
-  padding-top: 10px;
-  padding-bottom: 25px; /* Bezpieczna strefa dolna iPhone'a */
-  z-index: 1000;
-}
-
-.tab-btn {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-  font-size: 10px;
-  font-weight: 500;
-  width: 60px;
-}
-
-.tab-btn i {
-  font-size: 24px;
-}
-
-.tab-btn.active {
-  color: var(--accent-blue);
-}
-
-/* Ukrywanie elementów */
-.hidden {
-  display: none !important;
-}
-
-/* Kontener główny (pod tab barem) */
-#app-content {
-  height: calc(100vh - 85px);
-  overflow-y: auto;
-  padding-top: env(safe-area-inset-top); /* Margines pod wycięciem (Notch) w iPhonie */
-}
-
-/* --- Splash Screen --- */
-.splash-screen {
-  position: fixed;
-  top: 0; left: 0; width: 100%; height: 100%;
   background-color: #2b2b2b;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  z-index: 9999;
-  color: white;
-  transition: opacity 0.4s ease-in-out;
 }
 
-.logo-pulse {
-  font-size: 32px;
-  font-weight: bold;
-  animation: pulse 2s infinite ease-in-out;
-  margin-bottom: 30px;
+@keyframes idleFloat {
+  0% { transform: translateY(0px) rotate(0deg) scale(1); }
+  50% { transform: translateY(-10px) rotate(6deg) scale(1.05); }
+  100% { transform: translateY(0px) rotate(0deg) scale(1); }
 }
 
-.progress-bar {
-  width: 250px;
-  height: 4px;
-  background-color: rgba(255, 255, 255, 0.2);
-  border-radius: 2px;
-  overflow: hidden;
-  margin-bottom: 15px;
-}
-
-.progress-fill {
-  width: 0%;
-  height: 100%;
-  background-color: var(--accent-blue);
-  transition: width 0.3s ease;
-}
-
-#splash-text {
-  font-size: 14px;
-  color: #ccc;
-}
-
-@keyframes pulse {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.05); }
-  100% { transform: scale(1); }
+.animate-idle-float {
+  animation: idleFloat 3s ease-in-out infinite;
 }
