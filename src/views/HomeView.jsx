@@ -4,6 +4,7 @@ import { useData } from '../context/DataContext'
 import SettingsView from './SettingsView'
 import ScheduleView from './ScheduleView'
 import ArchiveView from './ArchiveView'
+import PlanView from './PlanView'
 
 export default function HomeView() {
   const [activeTab, setActiveTab] = useState("Dashboard")
@@ -464,6 +465,8 @@ export default function HomeView() {
           <ScheduleView onBack={() => setActiveTab("Dashboard")} />
         ) : activeTab === "Exam Database & Archive" ? (
           <ArchiveView onBack={() => setActiveTab("Dashboard")} />
+        ) : activeTab === "Plan" ? ( // <--- DODANE
+          <PlanView onBack={() => setActiveTab("Dashboard")} />
         ) : (
           <main className="flex-1 overflow-y-auto px-6 pb-24 md:p-10 pt-[calc(env(safe-area-inset-top)+1.5rem)]">
             
@@ -500,7 +503,7 @@ export default function HomeView() {
               </div>
             )}
 
-            {activeTab !== "Dashboard" && activeTab !== "More" && activeTab !== "Settings" && activeTab !== "Schedule" && activeTab !== "Exam Database & Archive" && (
+            {activeTab !== "Dashboard" && activeTab !== "More" && activeTab !== "Settings" && activeTab !== "Schedule" && activeTab !== "Exam Database & Archive" && activeTab !== "Plan" && (
               <div className="bg-[#1c1c1e] p-10 rounded-3xl border border-white/5 flex flex-col items-center justify-center text-gray-500 min-h-[300px]">
                 <span className="text-4xl mb-4">🚧</span>
                 <p>Widok <strong>{activeTab}</strong> jest w budowie...</p>

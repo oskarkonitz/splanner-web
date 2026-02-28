@@ -1,15 +1,12 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../api/supabase';
 
-// 1. Tworzymy kontekst
 const DataContext = createContext();
 
-// Pomocnicza funkcja do generowania ID
 const generateId = (prefix) => {
   return `${prefix}_${Math.random().toString(36).substring(2, 10)}`;
 };
 
-// 2. Provider
 export function DataProvider({ children, session }) {
   const [isLoading, setIsLoading] = useState(true);
   
@@ -26,6 +23,7 @@ export function DataProvider({ children, session }) {
   const [semesters, setSemesters] = useState([]);
   const [gradeModules, setGradeModules] = useState([]);
   const [grades, setGrades] = useState([]);
+  const [blockedDates, setBlockedDates] = useState([]);
 
   useEffect(() => {
     if (session) {
@@ -40,7 +38,7 @@ export function DataProvider({ children, session }) {
         tasksRes, topicsRes, examsRes, statsRes, 
         subjectsRes, scheduleRes, cancellationsRes, 
         customEventsRes, eventListsRes, semestersRes,
-        gradeModulesRes, gradesRes
+        gradeModulesRes, gradesRes, blockedRes
       ] = await Promise.all([
         supabase.from('daily_tasks').select('*'),
         supabase.from('topics').select('*'),
@@ -53,7 +51,8 @@ export function DataProvider({ children, session }) {
         supabase.from('event_lists').select('*'),
         supabase.from('semesters').select('*'),
         supabase.from('grade_modules').select('*'),
-        supabase.from('grades').select('*')
+        supabase.from('grades').select('*'),
+        supabase.from('blocked_dates').select('*') // Oczekiwana struktura: { date: "YYYY-MM-DD" }
       ]);
 
       if (tasksRes.data) setDailyTasks(tasksRes.data);
@@ -69,6 +68,7 @@ export function DataProvider({ children, session }) {
       if (semestersRes.data) setSemesters(semestersRes.data);
       if (gradeModulesRes.data) setGradeModules(gradeModulesRes.data);
       if (gradesRes.data) setGrades(gradesRes.data);
+      if (blockedRes.data) setBlockedDates(blockedRes.data);
 
     } catch (error) {
       console.error("Błąd pobierania Dashboardu:", error);
@@ -77,8 +77,7 @@ export function DataProvider({ children, session }) {
     }
   };
 
-  // --- FUNKCJE ZAPISU I USUWANIA ---
-
+  // --- FUNKCJE CRUD (Z poprzednich kroków) ---
   const saveExam = async (examData, isEditMode) => {
     try {
       const examId = isEditMode ? examData.id : generateId('exam');
@@ -103,16 +102,12 @@ export function DataProvider({ children, session }) {
         if (error) throw error;
       }
 
-      // --- LOGIKA TEMATÓW (JAK W PYTHONIE) ---
       if (examData.topicsRaw !== undefined) {
-        // Czyścimy i parsujemy string z tematami
         const newNames = examData.topicsRaw.split('\n')
           .map(t => t.replace(/^\d+\.\s*/, '').trim())
           .filter(t => t.length > 0);
         
-        // Pobieramy aktualne tematy dla tego egzaminu (ze stanu)
         const currentExamTopics = topics.filter(t => t.exam_id === examId);
-        
         const existingMap = {};
         currentExamTopics.forEach(t => existingMap[t.name] = t);
 
@@ -121,9 +116,9 @@ export function DataProvider({ children, session }) {
 
         newNames.forEach(name => {
           if (existingMap[name]) {
-            keptIds.push(existingMap[name].id); // Temat już istnieje - zachowujemy
+            keptIds.push(existingMap[name].id);
           } else {
-            topicsToInsert.push({ // Nowy temat
+            topicsToInsert.push({
               id: generateId('topic'),
               exam_id: examId,
               name: name,
@@ -138,13 +133,8 @@ export function DataProvider({ children, session }) {
           .filter(t => !keptIds.includes(t.id))
           .map(t => t.id);
 
-        if (topicsToInsert.length > 0) {
-          await supabase.from('topics').insert(topicsToInsert);
-        }
-        
-        if (topicsToDelete.length > 0) {
-          await supabase.from('topics').delete().in('id', topicsToDelete);
-        }
+        if (topicsToInsert.length > 0) await supabase.from('topics').insert(topicsToInsert);
+        if (topicsToDelete.length > 0) await supabase.from('topics').delete().in('id', topicsToDelete);
       }
 
       await fetchDashboardData();
@@ -158,22 +148,16 @@ export function DataProvider({ children, session }) {
     try {
       await supabase.from('exams').delete().eq('id', id);
       await fetchDashboardData();
-    } catch (error) {
-      console.error("Błąd usuwania egzaminu:", error);
-    }
+    } catch (error) { console.error("Błąd:", error); }
   };
 
-  // NOWE: NOTATKI DLA EGZAMINU
   const saveExamNote = async (examId, note) => {
     try {
       await supabase.from('exams').update({ note }).eq('id', examId);
       await fetchDashboardData();
-    } catch (error) {
-      console.error("Błąd zapisu notatki:", error);
-    }
+    } catch (error) { console.error("Błąd:", error); }
   };
 
-  // NOWE: OBSŁUGA POJEDYNCZEGO TEMATU
   const saveTopic = async (topicData) => {
     try {
       const { error } = await supabase.from('topics').update({
@@ -185,18 +169,14 @@ export function DataProvider({ children, session }) {
       
       if (error) throw error;
       await fetchDashboardData();
-    } catch (error) {
-      console.error("Błąd zapisu tematu:", error);
-    }
+    } catch (error) { console.error("Błąd:", error); }
   };
 
   const deleteTopic = async (id) => {
     try {
       await supabase.from('topics').delete().eq('id', id);
       await fetchDashboardData();
-    } catch (error) {
-      console.error("Błąd usuwania tematu:", error);
-    }
+    } catch (error) { console.error("Błąd:", error); }
   };
 
   const toggleTopicStatus = async (topicId, currentStatus) => {
@@ -214,11 +194,8 @@ export function DataProvider({ children, session }) {
             .eq('key', 'topics_done');
         }
       }
-
       await fetchDashboardData();
-    } catch (error) {
-      console.error("Błąd zmiany statusu tematu:", error);
-    }
+    } catch (error) { console.error("Błąd:", error); }
   };
 
   const saveCustomEvent = async (eventData, isEditMode) => {
@@ -241,29 +218,22 @@ export function DataProvider({ children, session }) {
         if (error) throw error;
       } else {
         payload.id = generateId('ev');
-        const { error } = await supabase.from('custom_events').insert([payload]);
-        if (error) throw error;
+        await supabase.from('custom_events').insert([payload]);
       }
       await fetchDashboardData();
-    } catch (error) {
-      console.error("Błąd zapisu wydarzenia:", error);
-      alert("Wystąpił błąd podczas zapisu wydarzenia.");
-    }
+    } catch (error) { console.error("Błąd:", error); }
   };
 
   const deleteCustomEvent = async (id) => {
     try {
       await supabase.from('custom_events').delete().eq('id', id);
       await fetchDashboardData();
-    } catch (error) {
-      console.error("Błąd usuwania wydarzenia:", error);
-    }
+    } catch (error) { console.error("Błąd:", error); }
   };
 
   const saveSubject = async (subjectData, entries, isEditMode) => {
     try {
       let subId = subjectData.id;
-      
       const payload = {
         semester_id: subjectData.semester_id,
         name: subjectData.name,
@@ -275,13 +245,11 @@ export function DataProvider({ children, session }) {
       };
 
       if (isEditMode) {
-        const { error } = await supabase.from('subjects').update(payload).eq('id', subId);
-        if (error) throw error;
+        await supabase.from('subjects').update(payload).eq('id', subId);
       } else {
         subId = generateId('sub');
         payload.id = subId;
-        const { error } = await supabase.from('subjects').insert([payload]);
-        if (error) throw error;
+        await supabase.from('subjects').insert([payload]);
       }
 
       await supabase.from('schedule_entries').delete().eq('subject_id', subId);
@@ -302,9 +270,168 @@ export function DataProvider({ children, session }) {
       }
 
       await fetchDashboardData();
-    } catch (error) {
-      console.error("Błąd zapisu przedmiotu:", error);
-      alert("Wystąpił błąd podczas zapisu przedmiotu.");
+    } catch (error) { console.error("Błąd:", error); }
+  };
+
+  // ==========================================
+  // ALGORYTM PLANUJĄCY (Przeniesiony 1:1 z Pythona)
+  // ==========================================
+  const runPlanner = async (onlyUnscheduled = false) => {
+    console.log(`Uruchamiam Planner (onlyUnscheduled: ${onlyUnscheduled})...`);
+    
+    // 1. Inicjalizacja Dat i Danych
+    const today = new Date();
+    today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+    const todayStr = today.toISOString().split('T')[0];
+    const todayNum = new Date(todayStr).getTime(); // Używamy czasu 00:00 w lokalnej strefie do porównań
+    
+    const blockedSet = new Set((blockedDates || []).map(b => b.date));
+    const calendar = {};
+
+    // Szukamy najdalszej daty egzaminu
+    let maxDateNum = todayNum;
+    exams.forEach(ex => {
+      if (!ex.date) return;
+      const exDateNum = new Date(ex.date).getTime();
+      if (exDateNum > maxDateNum) maxDateNum = exDateNum;
+    });
+
+    // 2. Wypełniamy kalendarz pustymi tablicami od dzisiaj do maxDate
+    let currNum = maxDateNum;
+    while (currNum >= todayNum) {
+      const dStr = new Date(currNum).toISOString().split('T')[0];
+      calendar[dStr] = [];
+      currNum -= 86400000; // minus 1 dzień (w milisekundach)
+    }
+
+    // 3. Wstawiamy znaczniki "E" (Bariery Egzaminacyjne)
+    exams.forEach(ex => {
+      if (ex.ignore_barrier || !ex.date) return;
+      if (new Date(ex.date).getTime() >= todayNum) {
+        if (calendar[ex.date]) calendar[ex.date].push("E");
+      }
+    });
+
+    // 4. Główna pętla po Egzaminach
+    exams.forEach(exam => {
+      if (!exam.date) return;
+      const examDateNum = new Date(exam.date).getTime();
+      if (examDateNum <= todayNum) return;
+
+      const endStudyNum = examDateNum - 86400000;
+      if (endStudyNum < todayNum) return;
+
+      // Szukamy startu okna nauki (skanowanie wstecz aż do bariery "E" lub dzisiaj)
+      let scanNum = endStudyNum;
+      while (scanNum > todayNum) {
+        const scanStr = new Date(scanNum).toISOString().split('T')[0];
+        if (calendar[scanStr] && calendar[scanStr].includes("E")) {
+          break; // Odbijamy się od bariery
+        }
+        scanNum -= 86400000;
+      }
+      const startStudyNum = scanNum;
+
+      // Zbieramy tematy dla tego egzaminu (odrzucamy Locked i zrobione)
+      let tList = topics.filter(t => t.exam_id === exam.id && t.status === "todo" && !t.locked);
+      if (onlyUnscheduled) {
+        tList = tList.filter(t => !t.scheduled_date);
+      }
+      
+      if (tList.length === 0) return; // Brak tematów do rozłożenia
+
+      // Zbieramy dni, które nadają się do nauki
+      const validDays = [];
+      let cNum = startStudyNum < todayNum ? todayNum : startStudyNum;
+      
+      while (cNum <= endStudyNum) {
+        const curStr = new Date(cNum).toISOString().split('T')[0];
+        const hasExam = calendar[curStr] && calendar[curStr].includes("E");
+
+        // Dzień poprawny: nie zablokowany ORAZ (nie ma Egzaminu LUB jest to dzień startowy-odbicie)
+        if (!blockedSet.has(curStr)) {
+          if (!hasExam || (hasExam && cNum === startStudyNum)) {
+            validDays.push(curStr);
+          }
+        }
+        cNum += 86400000;
+      }
+
+      validDays.sort();
+      if (validDays.length === 0) return;
+
+      // ALGORYTM ROZKŁADANIA (Back-loading / Offset)
+      const daysTotal = validDays.length;
+      const tasksTotal = tList.length;
+      let startIndex = 0;
+
+      if (tasksTotal <= daysTotal) {
+        startIndex = daysTotal - tasksTotal; // Przyklej do egzaminu (przesuń w prawo)
+      }
+
+      for (let i = startIndex; i < daysTotal; i++) {
+        if (tList.length === 0) break;
+        
+        const currentDayStr = validDays[i];
+        const daysRemaining = daysTotal - i;
+        const tasksRemaining = tList.length;
+        
+        const perDay = daysRemaining > 0 ? Math.ceil(tasksRemaining / daysRemaining) : tasksRemaining;
+
+        for (let j = 0; j < perDay; j++) {
+          if (tList.length > 0) {
+            const task = tList.shift();
+            if (calendar[currentDayStr]) {
+              calendar[currentDayStr].push(task.id);
+            }
+          }
+        }
+      }
+    });
+
+    // 5. Zapisanie wyników
+    const topicsMap = {};
+    topics.forEach(t => topicsMap[t.id] = { ...t });
+
+    // A. Resetowanie starych dat
+    if (!onlyUnscheduled) {
+      Object.values(topicsMap).forEach(topic => {
+        if (topic.status === "todo" && !topic.locked) {
+          topic.scheduled_date = null;
+        }
+      });
+    }
+
+    // B. Przypisywanie wyliczonych dat
+    Object.entries(calendar).forEach(([dateStr, items]) => {
+      items.forEach(itemId => {
+        if (itemId === "E") return;
+        if (topicsMap[itemId]) {
+          topicsMap[itemId].scheduled_date = dateStr;
+        }
+      });
+    });
+
+    // C. Bulk Update do Supabase
+    const topicsToUpdate = Object.values(topicsMap).map(t => ({
+      id: t.id,
+      exam_id: t.exam_id,
+      name: t.name,
+      status: t.status,
+      scheduled_date: t.scheduled_date,
+      locked: t.locked,
+      note: t.note
+    }));
+
+    try {
+      const { error } = await supabase.from('topics').upsert(topicsToUpdate);
+      if (error) throw error;
+      await fetchDashboardData();
+      // Opcjonalnie powiadomienie
+      console.log("Plan wygenerowany pomyślnie!");
+    } catch (err) {
+      console.error("Błąd podczas zapisywania wygenerowanego planu:", err);
+      alert("Failed to save the generated plan.");
     }
   };
 
@@ -314,7 +441,8 @@ export function DataProvider({ children, session }) {
       subjects, scheduleEntries, cancellations, customEvents,
       eventLists, semesters, gradeModules, grades,
       fetchDashboardData, saveExam, deleteExam, saveCustomEvent, deleteCustomEvent, saveSubject,
-      toggleTopicStatus, saveExamNote, saveTopic, deleteTopic
+      toggleTopicStatus, saveExamNote, saveTopic, deleteTopic,
+      runPlanner // <--- NOWOŚĆ: Wyeksportowany planer
     }}>
       {children}
     </DataContext.Provider>
