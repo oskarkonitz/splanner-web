@@ -7,10 +7,9 @@ export default function GlobalPopups({ popupData, onClose }) {
   useEffect(() => {
     if (popupData) {
       setIsVisible(true);
-      // Automatyczne zamknięcie po 5 sekundach
       const timer = setTimeout(() => {
         setIsVisible(false);
-        setTimeout(onClose, 300); // Czekamy na koniec animacji CSS
+        setTimeout(onClose, 300); // Wait for transition
       }, 5000);
       return () => clearTimeout(timer);
     }
@@ -18,20 +17,22 @@ export default function GlobalPopups({ popupData, onClose }) {
 
   if (!popupData) return null;
 
+  // Codzienne gratulacje
   if (popupData.type === 'congrats') {
     return (
       <div className={`fixed top-10 left-0 right-0 z-[100] flex justify-center pointer-events-none transition-all duration-500 ease-out ${isVisible ? 'translate-y-0 opacity-100' : '-translate-y-10 opacity-0'}`}>
         <div className="bg-[#2ecc71] text-white px-6 py-4 rounded-3xl shadow-2xl flex items-center gap-4 border-2 border-white/20">
           <span className="text-3xl animate-bounce">🎉</span>
           <div>
-            <h3 className="font-black text-lg">All Tasks Done!</h3>
-            <p className="text-sm font-medium opacity-90">Enjoy the rest of your day, Chill Guy.</p>
+            <h3 className="font-black text-lg shadow-black drop-shadow-md">All Tasks Done!</h3>
+            <p className="text-sm font-medium opacity-90">Enjoy the rest of your day.</p>
           </div>
         </div>
       </div>
     );
   }
 
+  // Zwykłe Osiągnięcie
   if (popupData.type === 'achievement') {
     const ach = getAchievementData(popupData.id);
     if (!ach) return null;

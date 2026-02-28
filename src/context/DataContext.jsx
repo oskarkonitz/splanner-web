@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../api/supabase';
+import { evaluateAchievements } from '../data/achievements';
+import GlobalPopups from '../components/GlobalPopups';
 
 const DataContext = createContext();
 
@@ -25,7 +27,11 @@ export function DataProvider({ children, session }) {
   const [gradeModules, setGradeModules] = useState([]);
   const [grades, setGrades] = useState([]);
   const [blockedDates, setBlockedDates] = useState([]);
-  const [subscriptions, setSubscriptions] = useState([]); // <--- NOWE
+  const [subscriptions, setSubscriptions] = useState([]); 
+  
+  // --- SYSTEM OSIĄGNIĘĆ ---
+  const [achievements, setAchievements] = useState([]); 
+  const [popupQueue, setPopupQueue] = useState([]); 
 
   useEffect(() => {
     if (session) {
@@ -40,7 +46,8 @@ export function DataProvider({ children, session }) {
         tasksRes, taskListsRes, topicsRes, examsRes, statsRes, 
         subjectsRes, scheduleRes, cancellationsRes, 
         customEventsRes, eventListsRes, semestersRes,
-        gradeModulesRes, gradesRes, blockedRes, subscriptionsRes // <--- NOWE
+        gradeModulesRes, gradesRes, blockedRes, subscriptionsRes,
+        achievementsRes 
       ] = await Promise.all([
         supabase.from('daily_tasks').select('*'),
         supabase.from('task_lists').select('*'),
@@ -56,7 +63,8 @@ export function DataProvider({ children, session }) {
         supabase.from('grade_modules').select('*'),
         supabase.from('grades').select('*'),
         supabase.from('blocked_dates').select('*'),
-        supabase.from('subscriptions').select('*') // <--- NOWE
+        supabase.from('subscriptions').select('*'),
+        supabase.from('achievements').select('*') 
       ]);
 
       if (tasksRes.data) setDailyTasks(tasksRes.data);
@@ -72,14 +80,16 @@ export function DataProvider({ children, session }) {
       if (eventListsRes.data) setEventLists(eventListsRes.data);
       if (semestersRes.data) setSemesters(semestersRes.data);
       if (gradeModulesRes.data) setGradeModules(gradeModulesRes.data);
-      if (subscriptionsRes.data) setSubscriptions(subscriptionsRes.data); // <--- NOWE
+      if (subscriptionsRes.data) setSubscriptions(subscriptionsRes.data);
       
+      if (achievementsRes.data) {
+        setAchievements(achievementsRes.data.map(a => a.achievement_id));
+      }
+
       if (gradesRes.data) {
         const mappedGrades = gradesRes.data.map(g => {
           const newG = { ...g };
-          if (newG.desc_text !== undefined) {
-            newG.desc = newG.desc_text;
-          }
+          if (newG.desc_text !== undefined) newG.desc = newG.desc_text;
           return newG;
         });
         setGrades(mappedGrades);
@@ -93,6 +103,41 @@ export function DataProvider({ children, session }) {
       setIsLoading(false);
     }
   };
+
+  // --- ENGINE OSIĄGNIĘĆ ---
+  const saveAchievement = async (id) => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      await supabase.from('achievements').upsert({ achievement_id: id, date_earned: today });
+      setAchievements(prev => [...prev, id]);
+      setPopupQueue(prev => [...prev, { type: 'achievement', id }]);
+    } catch (err) { console.error("Error saving achievement:", err); }
+  };
+
+  useEffect(() => {
+    if (isLoading) return;
+    
+    // Ewaluacja wszystkich Osiągnięć z pliku logicznego
+    const newlyUnlocked = evaluateAchievements({ 
+      topics, exams, subjects, grades, gradeModules, blockedDates, globalStats, dailyTasks 
+    }, achievements);
+    
+    newlyUnlocked.forEach(id => saveAchievement(id));
+
+    // Sprawdzanie "All Tasks Done Today"
+    const today = new Date().toISOString().split('T')[0];
+    const todayTasks = dailyTasks.filter(t => t.date === today);
+    
+    if (todayTasks.length > 0 && todayTasks.every(t => t.status === 'done')) {
+      if (!achievements.includes('clean_sheet')) saveAchievement('clean_sheet');
+      
+      const lastCongrats = localStorage.getItem('last_congrats_date');
+      if (lastCongrats !== today) {
+        setPopupQueue(prev => [...prev, { type: 'congrats' }]);
+        localStorage.setItem('last_congrats_date', today);
+      }
+    }
+  }, [dailyTasks, topics, exams, subjects, grades, gradeModules, blockedDates, globalStats, isLoading]);
 
   const saveTask = async (taskData, isEditMode) => {
     try {
@@ -450,7 +495,6 @@ export function DataProvider({ children, session }) {
     } catch (error) { console.error("Błąd usuwania oceny:", error); }
   };
 
-  // --- LOGIKA SUBSKRYPCJI ---
   const saveSubscription = async (subData) => {
     try {
       const payload = {
@@ -606,15 +650,17 @@ export function DataProvider({ children, session }) {
       isLoading, dailyTasks, taskLists, topics, exams, globalStats,
       subjects, scheduleEntries, cancellations, customEvents,
       eventLists, semesters, gradeModules, grades,
-      subscriptions, // <--- NOWE
+      subscriptions, achievements, // <--- NOWE
       fetchDashboardData, saveExam, deleteExam, saveCustomEvent, deleteCustomEvent, saveSubject,
       toggleTopicStatus, saveExamNote, saveTopic, deleteTopic, runPlanner,
       saveTask, deleteTask, toggleTaskStatus, sweepCompletedTasks, saveTaskList, deleteTaskList,
       deleteSubject, saveSemester, deleteSemester, setCurrentSemester,
       saveGradeModule, deleteGradeModule, saveGrade, deleteGrade,
-      saveSubscription, deleteSubscription // <--- NOWE
+      saveSubscription, deleteSubscription 
     }}>
       {children}
+      {/* GLOBALNE POPUPY */}
+      <GlobalPopups popupData={popupQueue[0]} onClose={() => setPopupQueue(prev => prev.slice(1))} />
     </DataContext.Provider>
   );
 }
