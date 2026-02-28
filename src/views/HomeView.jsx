@@ -6,6 +6,7 @@ import ScheduleView from './ScheduleView'
 import ArchiveView from './ArchiveView'
 import PlanView from './PlanView'
 import TodoView from './TodoView'
+import SubjectsView from './SubjectsView'
 
 export default function HomeView() {
   const [activeTab, setActiveTab] = useState("Dashboard")
@@ -468,8 +469,10 @@ export default function HomeView() {
           <ArchiveView onBack={() => setActiveTab("Dashboard")} />
         ) : activeTab === "Plan" ? (
           <PlanView onBack={() => setActiveTab("Dashboard")} />
-        ) : activeTab === "Todo" ? ( // <--- DODANE
+        ) : activeTab === "Todo" ? (
           <TodoView onBack={() => setActiveTab("Dashboard")} />
+        ) : activeTab === "Subjects & Semesters" ? (
+          <SubjectsView onBack={() => setActiveTab("Dashboard")} />
         ) : (
           <main className="flex-1 overflow-y-auto px-6 pb-24 md:p-10 pt-[calc(env(safe-area-inset-top)+1.5rem)]">
             

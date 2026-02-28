@@ -11,7 +11,7 @@ export function DataProvider({ children, session }) {
   const [isLoading, setIsLoading] = useState(true);
   
   const [dailyTasks, setDailyTasks] = useState([]);
-  const [taskLists, setTaskLists] = useState([]); // <--- NOWE
+  const [taskLists, setTaskLists] = useState([]);
   const [topics, setTopics] = useState([]);
   const [exams, setExams] = useState([]);
   const [globalStats, setGlobalStats] = useState([]);
@@ -42,7 +42,7 @@ export function DataProvider({ children, session }) {
         gradeModulesRes, gradesRes, blockedRes
       ] = await Promise.all([
         supabase.from('daily_tasks').select('*'),
-        supabase.from('task_lists').select('*'), // <--- NOWE
+        supabase.from('task_lists').select('*'),
         supabase.from('topics').select('*'),
         supabase.from('exams').select('*'),
         supabase.from('global_stats').select('*'),
@@ -58,7 +58,7 @@ export function DataProvider({ children, session }) {
       ]);
 
       if (tasksRes.data) setDailyTasks(tasksRes.data);
-      if (taskListsRes.data) setTaskLists(taskListsRes.data); // <--- NOWE
+      if (taskListsRes.data) setTaskLists(taskListsRes.data);
       if (topicsRes.data) setTopics(topicsRes.data);
       if (examsRes.data) setExams(examsRes.data);
       if (statsRes.data) setGlobalStats(statsRes.data);
@@ -147,7 +147,6 @@ export function DataProvider({ children, session }) {
   const deleteTaskList = async (id) => {
     try {
       await supabase.from('task_lists').delete().eq('id', id);
-      // Opcjonalnie: usunięcie zadań powiązanych z tą listą
       await supabase.from('daily_tasks').delete().eq('list_id', id);
       await fetchDashboardData();
     } catch (error) { console.error("Błąd:", error); }
@@ -339,6 +338,54 @@ export function DataProvider({ children, session }) {
     } catch (error) { console.error("Błąd:", error); }
   };
 
+  const deleteSubject = async (id) => {
+    try {
+      await supabase.from('subjects').delete().eq('id', id);
+      await fetchDashboardData();
+    } catch (error) { console.error("Błąd usuwania przedmiotu:", error); }
+  };
+
+  const saveSemester = async (semData, isEditMode) => {
+    try {
+      const payload = {
+        name: semData.name,
+        start_date: semData.startDate,
+        end_date: semData.endDate,
+        is_current: semData.isCurrent
+      };
+      
+      let newId = semData.id;
+      if (isEditMode) {
+        await supabase.from('semesters').update(payload).eq('id', newId);
+      } else {
+        newId = generateId('sem');
+        payload.id = newId;
+        await supabase.from('semesters').insert([payload]);
+      }
+      
+      if (semData.isCurrent) {
+        await supabase.from('semesters').update({ is_current: false }).neq('id', newId);
+      }
+      await fetchDashboardData();
+    } catch (error) { console.error("Błąd zapisu semestru:", error); }
+  };
+
+  const deleteSemester = async (id) => {
+    try {
+      await supabase.from('semesters').delete().eq('id', id);
+      await supabase.from('subjects').delete().eq('semester_id', id);
+      await fetchDashboardData();
+    } catch (error) { console.error("Błąd usuwania semestru:", error); }
+  };
+
+  const setCurrentSemester = async (id) => {
+    try {
+      await supabase.from('semesters').update({ is_current: false }).neq('id', '0');
+      await supabase.from('semesters').update({ is_current: true }).eq('id', id);
+      await fetchDashboardData();
+    } catch (error) { console.error("Błąd zmiany aktualnego semestru:", error); }
+  };
+
   const runPlanner = async (onlyUnscheduled = false) => {
     const today = new Date();
     today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
@@ -464,7 +511,8 @@ export function DataProvider({ children, session }) {
       eventLists, semesters, gradeModules, grades,
       fetchDashboardData, saveExam, deleteExam, saveCustomEvent, deleteCustomEvent, saveSubject,
       toggleTopicStatus, saveExamNote, saveTopic, deleteTopic, runPlanner,
-      saveTask, deleteTask, toggleTaskStatus, sweepCompletedTasks, saveTaskList, deleteTaskList
+      saveTask, deleteTask, toggleTaskStatus, sweepCompletedTasks, saveTaskList, deleteTaskList,
+      deleteSubject, saveSemester, deleteSemester, setCurrentSemester
     }}>
       {children}
     </DataContext.Provider>
