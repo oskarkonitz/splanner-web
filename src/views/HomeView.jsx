@@ -1,21 +1,21 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../api/supabase'
 import { useData } from '../context/DataContext'
+import SettingsView from './SettingsView'
+import ScheduleView from './ScheduleView'
+import ArchiveView from './ArchiveView'
 
 export default function HomeView() {
   const [activeTab, setActiveTab] = useState("Dashboard")
 
-  // Zegar czasu rzeczywistego (do płynnych animacji paska postępu i odliczania)
   const [currentTime, setCurrentTime] = useState(new Date())
 
-  // WYCIĄGAMY DANE Z NASZEGO MANAGERA
   const { 
     isLoading, dailyTasks, topics, exams, globalStats,
     subjects, scheduleEntries, cancellations, customEvents, 
     eventLists, semesters, gradeModules, grades 
   } = useData()
 
-  // Zmienne do przetworzonych danych
   const [todayProgress, setTodayProgress] = useState({ done: 0, total: 0 })
   const [totalProgress, setTotalProgress] = useState({ done: 0, total: 0 })
   const [nextExam, setNextExam] = useState(null)
@@ -23,17 +23,14 @@ export default function HomeView() {
   const [focusTime, setFocusTime] = useState(0)
   const [gpa, setGpa] = useState(0.0)
 
-  // Główne zakładki
   const mainTabs = ["Dashboard", "Plan", "Todo", "Schedule"];
   const moreTabs = ["Exam Database & Archive", "Achievements", "Subjects & Semesters", "Grades", "Subscriptions"];
 
-  // Odświeżanie czasu co sekundę
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
     return () => clearInterval(timer)
   }, [])
 
-  // Przeliczanie danych z bazy
   useEffect(() => {
     if (isLoading || !dailyTasks) return;
 
@@ -41,14 +38,12 @@ export default function HomeView() {
     const todayStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
     const currentTimeStr = now.toTimeString().substring(0, 5);
 
-    // --- 1. CZAS SKUPIENIA ---
     const timeStat = globalStats?.find(s => s.key === 'daily_study_time');
     if (timeStat) {
       const safeStringValue = String(timeStat.value).replace(/"/g, '');
       setFocusTime(parseInt(safeStringValue) || 0);
     }
 
-    // --- 2. DZISIEJSZY PROGRES ---
     const todayTasks = dailyTasks?.filter(t => t.date === todayStr) || [];
     const todayTopics = topics?.filter(t => t.scheduled_date === todayStr) || [];
     setTodayProgress({
@@ -56,7 +51,6 @@ export default function HomeView() {
       total: todayTasks.length + todayTopics.length
     });
 
-    // --- 3. CAŁKOWITY PROGRES ---
     const futureExams = (exams || []).filter(e => e.date >= todayStr);
     const futureExamIDs = new Set(futureExams.map(e => e.id));
     
@@ -73,7 +67,6 @@ export default function HomeView() {
       total: relevantTopics.length + relevantTasks.length
     });
 
-    // --- 4. NASTĘPNY EGZAMIN ---
     const upcomingExams = (exams || [])
       .filter(e => e.date >= todayStr)
       .sort((a, b) => {
@@ -82,7 +75,6 @@ export default function HomeView() {
       });
     setNextExam(upcomingExams.length > 0 ? upcomingExams[0] : null);
 
-    // --- 5. LOGIKA NOW/NEXT ---
     let foundNext = null;
     const selectedSemesterID = "ALL";
 
@@ -94,7 +86,6 @@ export default function HomeView() {
       
       let dailyItems = [];
       
-      // Zajęcia
       const dayClasses = (scheduleEntries || []).filter(entry => {
         if (entry.day_of_week !== weekday) return false;
         const subject = (subjects || []).find(s => s.id === entry.subject_id);
@@ -119,7 +110,6 @@ export default function HomeView() {
         });
       }
       
-      // Custom Events
       const dayEvents = (customEvents || []).filter(event => {
         const isRec = event.is_recurring;
         const sDate = event.date || event.start_date || "";
@@ -169,7 +159,6 @@ export default function HomeView() {
     }
     setNowNextItem(foundNext);
 
-    // --- 6. OBLICZANIE GPA ---
     const convertToGradeScale = (val) => {
       if (val <= 5.0) return val;
       if (val >= 90) return 5.0;
@@ -221,7 +210,6 @@ export default function HomeView() {
 
   }, [isLoading, dailyTasks, topics, exams, globalStats, subjects, scheduleEntries, cancellations, customEvents, eventLists, semesters, gradeModules, grades]);
 
-  // LOGIKA ANIMACJI KARTY NOW/NEXT + ODLICZANIE DO STARTU/KOŃCA
   const getNowNextState = () => {
     if (!nowNextItem) return { isNow: false, isStartingSoon: false, progress: 0, isToday: false, countdownStr: "" };
     
@@ -257,7 +245,6 @@ export default function HomeView() {
         countdownStr = h > 0 ? `Starts in ${h}h ${m}m` : `Starts in ${m}m`;
       }
     } else {
-      // Jeśli wydarzenie jest w przyszłości, pokazujemy "Upcoming" zamiast odliczania
       countdownStr = "Upcoming";
     }
 
@@ -292,7 +279,6 @@ export default function HomeView() {
     
     return (
       <div className="flex flex-col gap-6">
-        {/* Style pod animację pulsowania ze Swifta */}
         <style>{`
           @keyframes pulseRing {
             0% { transform: scale(1); opacity: 0.8; }
@@ -303,7 +289,6 @@ export default function HomeView() {
           }
         `}</style>
 
-        {/* KARTY POSTĘPU NA TELEFONY (2 KOLUMNY, TYLKO md:hidden) */}
         <div className="grid grid-cols-2 gap-4 md:hidden">
           <div className="bg-[#1c1c1e] p-5 rounded-3xl shadow-lg border border-white/5 flex flex-col items-center justify-center gap-2">
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Today</span>
@@ -321,27 +306,19 @@ export default function HomeView() {
           </div>
         </div>
 
-        {/* GŁÓWNA SIATKA */}
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
           
-          {/* NOW / NEXT */}
           {nowNextItem ? (
             <div className="relative bg-[#1c1c1e] rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px]">
-              
-              {/* EFEKT 1: PULSOWANIE (<= 5 minut do startu) */}
               {isStartingSoon && (
                 <>
                   <div className="absolute inset-0 rounded-3xl border-2 pointer-events-none" style={{ borderColor: nowNextItem.hexColor }}></div>
                   <div className="absolute inset-0 rounded-3xl border-[3px] animate-pulse-ring pointer-events-none" style={{ borderColor: nowNextItem.hexColor }}></div>
                 </>
               )}
-
-              {/* EFEKT 2: PASEK POSTĘPU NA KRAWĘDZI (Trwa w tym momencie) */}
               {isNow && (
                 <>
-                  {/* Tło paska */}
                   <div className="absolute inset-0 rounded-3xl border-[4px] pointer-events-none opacity-15" style={{ borderColor: nowNextItem.hexColor }}></div>
-                  {/* Animujący się border SVG */}
                   <svg className="absolute inset-0 w-full h-full pointer-events-none">
                     <rect 
                       x="2" y="2" 
@@ -359,15 +336,11 @@ export default function HomeView() {
                   </svg>
                 </>
               )}
-
-              {/* Zawartość Karty */}
               <div className="p-6 flex flex-col gap-4 relative z-10 h-full">
                 <div className="flex justify-between items-center">
                   <span className="text-xs font-bold uppercase tracking-wider" style={{ color: nowNextItem.hexColor }}>
                     {isNow ? "Now" : "Next"}
                   </span>
-                  
-                  {/* ZMIANA: Dynamiczne odliczanie czasu w prawym górnym rogu */}
                   <span className="text-xs px-2 py-1 rounded-md font-medium" style={{ backgroundColor: `${nowNextItem.hexColor}20`, color: nowNextItem.hexColor }}>
                     {countdownStr}
                   </span>
@@ -378,14 +351,11 @@ export default function HomeView() {
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                     <span>{isToday ? "Today" : nowNextItem.dateStr} • {nowNextItem.startTime} - {nowNextItem.endTime === "23:59" ? "End of day" : nowNextItem.endTime}</span>
                   </div>
-                  
-                  {/* ZMIANA: Typ zajęć przeniesiony obok sali (subtitle) */}
                   <span className="text-gray-500 text-sm mt-1">
                     {nowNextItem.typeStr} {nowNextItem.subtitle ? `• ${nowNextItem.subtitle}` : ""}
                   </span>
                 </div>
               </div>
-
             </div>
           ) : (
             <div className="bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col gap-4 min-h-[140px]">
@@ -396,7 +366,6 @@ export default function HomeView() {
             </div>
           )}
 
-          {/* NEXT EXAM */}
           <div className="bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col gap-4 min-h-[140px]">
             <div className="flex items-center gap-2 text-orange-400">
               <span className="text-sm font-bold uppercase tracking-wider">Next Exam</span>
@@ -413,7 +382,6 @@ export default function HomeView() {
             </div>
           </div>
 
-          {/* TODAY'S FOCUS */}
           <div className="bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col justify-between min-h-[140px]">
             <span className="text-sm font-semibold text-gray-400">Today's Focus</span>
             <div className="text-5xl font-bold text-indigo-400 mt-2">
@@ -421,7 +389,6 @@ export default function HomeView() {
             </div>
           </div>
 
-          {/* GPA */}
           <div className="bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col justify-between min-h-[140px]">
             <span className="text-sm font-semibold text-gray-400">Current Semester GPA</span>
             <div className="text-5xl font-bold text-blue-400 mt-2">
@@ -437,8 +404,8 @@ export default function HomeView() {
   return (
     <div className="flex h-screen w-full bg-[#2b2b2b] text-white overflow-hidden">
       
-      {/* PASEK BOCZNY */}
-      <aside className="hidden md:flex flex-col w-72 bg-[#1c1c1e] border-r border-gray-800 p-6 overflow-y-auto">
+      {/* PASEK BOCZNY Z MARGINESEM U GÓRY DLA NOTCHA */}
+      <aside className="hidden md:flex flex-col w-72 bg-[#1c1c1e] border-r border-gray-800 px-6 pb-6 pt-[calc(env(safe-area-inset-top)+1.5rem)] overflow-y-auto">
         <div 
           className="flex items-center gap-3 mb-10 cursor-pointer hover:opacity-80 transition-opacity"
           onClick={() => setActiveTab("Dashboard")}
@@ -490,52 +457,61 @@ export default function HomeView() {
 
       {/* GŁÓWNA ZAWARTOŚĆ */}
       <div className="flex-1 flex flex-col relative">
-        <main className="flex-1 overflow-y-auto p-6 md:p-10 pb-24 md:pb-10">
-          
-          <header className="flex justify-between items-start mb-10">
-            <div>
-              <h1 className="text-3xl font-bold">{activeTab}</h1>
-              {activeTab === "Dashboard" && <p className="hidden md:block text-gray-400 mt-1">Welcome back! Here is your overview.</p>}
-            </div>
+        
+        {activeTab === "Settings" ? (
+          <SettingsView onBack={() => setActiveTab("Dashboard")} />
+        ) : activeTab === "Schedule" ? (
+          <ScheduleView onBack={() => setActiveTab("Dashboard")} />
+        ) : activeTab === "Exam Database & Archive" ? (
+          <ArchiveView onBack={() => setActiveTab("Dashboard")} />
+        ) : (
+          <main className="flex-1 overflow-y-auto px-6 pb-24 md:p-10 pt-[calc(env(safe-area-inset-top)+1.5rem)]">
+            
+            <header className="flex justify-between items-start mb-10">
+              <div>
+                <h1 className="text-3xl font-bold">{activeTab}</h1>
+                {activeTab === "Dashboard" && <p className="hidden md:block text-gray-400 mt-1">Welcome back! Here is your overview.</p>}
+              </div>
 
-            <div className="flex items-center gap-3">
-              <button className="p-2.5 text-gray-400 hover:text-white bg-[#1c1c1e] hover:bg-gray-800 rounded-full transition-colors border border-gray-800">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-              </button>
-              <button onClick={() => supabase.auth.signOut()} className="p-2.5 text-gray-400 hover:text-red-400 bg-[#1c1c1e] hover:bg-red-500/10 rounded-full transition-colors border border-gray-800">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
-              </button>
-            </div>
-          </header>
-
-          {activeTab === "Dashboard" && renderDashboardWidgets()}
-          
-          {activeTab === "More" && (
-            <div className="flex flex-col gap-3">
-              {moreTabs.map(item => (
-                <button 
-                  key={item}
-                  onClick={() => setActiveTab(item)}
-                  className="bg-[#1c1c1e] p-4 rounded-2xl flex justify-between items-center active:scale-95 transition-transform"
-                >
-                  <span className="font-medium text-gray-200">{item}</span>
-                  <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
+              <div className="flex items-center gap-3">
+                <button onClick={() => setActiveTab("Settings")} className="p-2.5 text-gray-400 hover:text-white bg-[#1c1c1e] hover:bg-gray-800 rounded-full transition-colors border border-gray-800">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                 </button>
-              ))}
-            </div>
-          )}
+                <button onClick={() => supabase.auth.signOut()} className="p-2.5 text-gray-400 hover:text-red-400 bg-[#1c1c1e] hover:bg-red-500/10 rounded-full transition-colors border border-gray-800">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+                </button>
+              </div>
+            </header>
 
-          {activeTab !== "Dashboard" && activeTab !== "More" && (
-            <div className="bg-[#1c1c1e] p-10 rounded-3xl border border-white/5 flex flex-col items-center justify-center text-gray-500 min-h-[300px]">
-              <span className="text-4xl mb-4">🚧</span>
-              <p>Widok <strong>{activeTab}</strong> jest w budowie...</p>
-            </div>
-          )}
+            {activeTab === "Dashboard" && renderDashboardWidgets()}
+            
+            {activeTab === "More" && (
+              <div className="flex flex-col gap-3">
+                {moreTabs.map(item => (
+                  <button 
+                    key={item}
+                    onClick={() => setActiveTab(item)}
+                    className="bg-[#1c1c1e] p-4 rounded-2xl flex justify-between items-center active:scale-95 transition-transform"
+                  >
+                    <span className="font-medium text-gray-200">{item}</span>
+                    <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
+                  </button>
+                ))}
+              </div>
+            )}
 
-        </main>
+            {activeTab !== "Dashboard" && activeTab !== "More" && activeTab !== "Settings" && activeTab !== "Schedule" && activeTab !== "Exam Database & Archive" && (
+              <div className="bg-[#1c1c1e] p-10 rounded-3xl border border-white/5 flex flex-col items-center justify-center text-gray-500 min-h-[300px]">
+                <span className="text-4xl mb-4">🚧</span>
+                <p>Widok <strong>{activeTab}</strong> jest w budowie...</p>
+              </div>
+            )}
 
-        {/* DOLNY PASEK NAWIGACJI */}
-        <nav className="md:hidden absolute bottom-0 w-full bg-[#1c1c1e]/90 backdrop-blur-md border-t border-gray-800 pb-safe">
+          </main>
+        )}
+
+        {/* DOLNY PASEK NAWIGACJI - Z PADDINGIEM BOTTOM */}
+        <nav className="md:hidden absolute bottom-0 w-full bg-[#1c1c1e]/90 backdrop-blur-md border-t border-gray-800 pb-[env(safe-area-inset-bottom)]">
           <div className="flex justify-around items-center h-20 px-2">
             {[...mainTabs, "More"].map((tab) => {
               const isSelected = activeTab === tab || (tab === "More" && moreTabs.includes(activeTab));
