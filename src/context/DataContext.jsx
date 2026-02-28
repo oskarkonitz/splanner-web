@@ -25,6 +25,7 @@ export function DataProvider({ children, session }) {
   const [gradeModules, setGradeModules] = useState([]);
   const [grades, setGrades] = useState([]);
   const [blockedDates, setBlockedDates] = useState([]);
+  const [subscriptions, setSubscriptions] = useState([]); // <--- NOWE
 
   useEffect(() => {
     if (session) {
@@ -39,7 +40,7 @@ export function DataProvider({ children, session }) {
         tasksRes, taskListsRes, topicsRes, examsRes, statsRes, 
         subjectsRes, scheduleRes, cancellationsRes, 
         customEventsRes, eventListsRes, semestersRes,
-        gradeModulesRes, gradesRes, blockedRes
+        gradeModulesRes, gradesRes, blockedRes, subscriptionsRes // <--- NOWE
       ] = await Promise.all([
         supabase.from('daily_tasks').select('*'),
         supabase.from('task_lists').select('*'),
@@ -54,7 +55,8 @@ export function DataProvider({ children, session }) {
         supabase.from('semesters').select('*'),
         supabase.from('grade_modules').select('*'),
         supabase.from('grades').select('*'),
-        supabase.from('blocked_dates').select('*')
+        supabase.from('blocked_dates').select('*'),
+        supabase.from('subscriptions').select('*') // <--- NOWE
       ]);
 
       if (tasksRes.data) setDailyTasks(tasksRes.data);
@@ -70,8 +72,8 @@ export function DataProvider({ children, session }) {
       if (eventListsRes.data) setEventLists(eventListsRes.data);
       if (semestersRes.data) setSemesters(semestersRes.data);
       if (gradeModulesRes.data) setGradeModules(gradeModulesRes.data);
+      if (subscriptionsRes.data) setSubscriptions(subscriptionsRes.data); // <--- NOWE
       
-      // ZMIANA: Mapowanie desc_text na desc (tak jak w Pythonie)
       if (gradesRes.data) {
         const mappedGrades = gradesRes.data.map(g => {
           const newG = { ...g };
@@ -396,7 +398,6 @@ export function DataProvider({ children, session }) {
     } catch (error) { console.error("Błąd zmiany aktualnego semestru:", error); }
   };
 
-  // --- LOGIKA OCEN (GRADES) ---
   const saveGradeModule = async (moduleData) => {
     try {
       const payload = {
@@ -417,20 +418,19 @@ export function DataProvider({ children, session }) {
   const deleteGradeModule = async (id) => {
     try {
       await supabase.from('grade_modules').delete().eq('id', id);
-      await supabase.from('grades').delete().eq('module_id', id); // Usunięcie kaskadowe
+      await supabase.from('grades').delete().eq('module_id', id);
       await fetchDashboardData();
     } catch (error) { console.error("Błąd usuwania modułu ocen:", error); }
   };
 
   const saveGrade = async (gradeData) => {
     try {
-      // ZMIANA: używamy 'desc_text' dla Supabase zamiast 'desc'
       const payload = {
         subject_id: gradeData.subject_id,
         module_id: gradeData.module_id || null,
         value: parseFloat(gradeData.value) || 0,
         weight: parseFloat(gradeData.weight) || 1,
-        desc_text: gradeData.desc || '', // <--- TUTAJ JEST POPRAWKA
+        desc_text: gradeData.desc || '',
         date: gradeData.date || null
       };
       if (gradeData.id) {
@@ -448,6 +448,39 @@ export function DataProvider({ children, session }) {
       await supabase.from('grades').delete().eq('id', id);
       await fetchDashboardData();
     } catch (error) { console.error("Błąd usuwania oceny:", error); }
+  };
+
+  // --- LOGIKA SUBSKRYPCJI ---
+  const saveSubscription = async (subData) => {
+    try {
+      const payload = {
+        subject_id: subData.subject_id || null,
+        name: subData.name,
+        provider: subData.provider || '',
+        cost: parseFloat(subData.cost) || 0,
+        currency: subData.currency || 'PLN',
+        billing_cycle: subData.billing_cycle || 'monthly',
+        billing_date: subData.billing_date || null,
+        expiry_date: subData.expiry_date || null,
+        note: subData.note || '',
+        is_active: subData.is_active !== undefined ? subData.is_active : true
+      };
+
+      if (subData.id) {
+        await supabase.from('subscriptions').update(payload).eq('id', subData.id);
+      } else {
+        payload.id = generateId('subscr');
+        await supabase.from('subscriptions').insert([payload]);
+      }
+      await fetchDashboardData();
+    } catch (error) { console.error("Błąd zapisu subskrypcji:", error); }
+  };
+
+  const deleteSubscription = async (id) => {
+    try {
+      await supabase.from('subscriptions').delete().eq('id', id);
+      await fetchDashboardData();
+    } catch (error) { console.error("Błąd usuwania subskrypcji:", error); }
   };
 
   const runPlanner = async (onlyUnscheduled = false) => {
@@ -573,11 +606,13 @@ export function DataProvider({ children, session }) {
       isLoading, dailyTasks, taskLists, topics, exams, globalStats,
       subjects, scheduleEntries, cancellations, customEvents,
       eventLists, semesters, gradeModules, grades,
+      subscriptions, // <--- NOWE
       fetchDashboardData, saveExam, deleteExam, saveCustomEvent, deleteCustomEvent, saveSubject,
       toggleTopicStatus, saveExamNote, saveTopic, deleteTopic, runPlanner,
       saveTask, deleteTask, toggleTaskStatus, sweepCompletedTasks, saveTaskList, deleteTaskList,
       deleteSubject, saveSemester, deleteSemester, setCurrentSemester,
-      saveGradeModule, deleteGradeModule, saveGrade, deleteGrade
+      saveGradeModule, deleteGradeModule, saveGrade, deleteGrade,
+      saveSubscription, deleteSubscription // <--- NOWE
     }}>
       {children}
     </DataContext.Provider>
