@@ -70,7 +70,19 @@ export function DataProvider({ children, session }) {
       if (eventListsRes.data) setEventLists(eventListsRes.data);
       if (semestersRes.data) setSemesters(semestersRes.data);
       if (gradeModulesRes.data) setGradeModules(gradeModulesRes.data);
-      if (gradesRes.data) setGrades(gradesRes.data);
+      
+      // ZMIANA: Mapowanie desc_text na desc (tak jak w Pythonie)
+      if (gradesRes.data) {
+        const mappedGrades = gradesRes.data.map(g => {
+          const newG = { ...g };
+          if (newG.desc_text !== undefined) {
+            newG.desc = newG.desc_text;
+          }
+          return newG;
+        });
+        setGrades(mappedGrades);
+      }
+      
       if (blockedRes.data) setBlockedDates(blockedRes.data);
 
     } catch (error) {
@@ -80,7 +92,6 @@ export function DataProvider({ children, session }) {
     }
   };
 
-  // --- NOWE FUNKCJE TODO ---
   const saveTask = async (taskData, isEditMode) => {
     try {
       const payload = {
@@ -152,7 +163,6 @@ export function DataProvider({ children, session }) {
     } catch (error) { console.error("Błąd:", error); }
   };
 
-  // --- FUNKCJE CRUD Z POPRZEDNICH ETAPÓW ---
   const saveExam = async (examData, isEditMode) => {
     try {
       const examId = isEditMode ? examData.id : generateId('exam');
@@ -386,6 +396,60 @@ export function DataProvider({ children, session }) {
     } catch (error) { console.error("Błąd zmiany aktualnego semestru:", error); }
   };
 
+  // --- LOGIKA OCEN (GRADES) ---
+  const saveGradeModule = async (moduleData) => {
+    try {
+      const payload = {
+        subject_id: moduleData.subject_id,
+        name: moduleData.name,
+        weight: parseFloat(moduleData.weight) || 0
+      };
+      if (moduleData.id) {
+        await supabase.from('grade_modules').update(payload).eq('id', moduleData.id);
+      } else {
+        payload.id = generateId('mod');
+        await supabase.from('grade_modules').insert([payload]);
+      }
+      await fetchDashboardData();
+    } catch (error) { console.error("Błąd zapisu modułu ocen:", error); }
+  };
+
+  const deleteGradeModule = async (id) => {
+    try {
+      await supabase.from('grade_modules').delete().eq('id', id);
+      await supabase.from('grades').delete().eq('module_id', id); // Usunięcie kaskadowe
+      await fetchDashboardData();
+    } catch (error) { console.error("Błąd usuwania modułu ocen:", error); }
+  };
+
+  const saveGrade = async (gradeData) => {
+    try {
+      // ZMIANA: używamy 'desc_text' dla Supabase zamiast 'desc'
+      const payload = {
+        subject_id: gradeData.subject_id,
+        module_id: gradeData.module_id || null,
+        value: parseFloat(gradeData.value) || 0,
+        weight: parseFloat(gradeData.weight) || 1,
+        desc_text: gradeData.desc || '', // <--- TUTAJ JEST POPRAWKA
+        date: gradeData.date || null
+      };
+      if (gradeData.id) {
+        await supabase.from('grades').update(payload).eq('id', gradeData.id);
+      } else {
+        payload.id = generateId('grd');
+        await supabase.from('grades').insert([payload]);
+      }
+      await fetchDashboardData();
+    } catch (error) { console.error("Błąd zapisu oceny:", error); }
+  };
+
+  const deleteGrade = async (id) => {
+    try {
+      await supabase.from('grades').delete().eq('id', id);
+      await fetchDashboardData();
+    } catch (error) { console.error("Błąd usuwania oceny:", error); }
+  };
+
   const runPlanner = async (onlyUnscheduled = false) => {
     const today = new Date();
     today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
@@ -512,7 +576,8 @@ export function DataProvider({ children, session }) {
       fetchDashboardData, saveExam, deleteExam, saveCustomEvent, deleteCustomEvent, saveSubject,
       toggleTopicStatus, saveExamNote, saveTopic, deleteTopic, runPlanner,
       saveTask, deleteTask, toggleTaskStatus, sweepCompletedTasks, saveTaskList, deleteTaskList,
-      deleteSubject, saveSemester, deleteSemester, setCurrentSemester
+      deleteSubject, saveSemester, deleteSemester, setCurrentSemester,
+      saveGradeModule, deleteGradeModule, saveGrade, deleteGrade
     }}>
       {children}
     </DataContext.Provider>
