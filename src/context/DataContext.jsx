@@ -11,6 +11,7 @@ export function DataProvider({ children, session }) {
   const [isLoading, setIsLoading] = useState(true);
   
   const [dailyTasks, setDailyTasks] = useState([]);
+  const [taskLists, setTaskLists] = useState([]); // <--- NOWE
   const [topics, setTopics] = useState([]);
   const [exams, setExams] = useState([]);
   const [globalStats, setGlobalStats] = useState([]);
@@ -35,12 +36,13 @@ export function DataProvider({ children, session }) {
     setIsLoading(true);
     try {
       const [
-        tasksRes, topicsRes, examsRes, statsRes, 
+        tasksRes, taskListsRes, topicsRes, examsRes, statsRes, 
         subjectsRes, scheduleRes, cancellationsRes, 
         customEventsRes, eventListsRes, semestersRes,
         gradeModulesRes, gradesRes, blockedRes
       ] = await Promise.all([
         supabase.from('daily_tasks').select('*'),
+        supabase.from('task_lists').select('*'), // <--- NOWE
         supabase.from('topics').select('*'),
         supabase.from('exams').select('*'),
         supabase.from('global_stats').select('*'),
@@ -52,10 +54,11 @@ export function DataProvider({ children, session }) {
         supabase.from('semesters').select('*'),
         supabase.from('grade_modules').select('*'),
         supabase.from('grades').select('*'),
-        supabase.from('blocked_dates').select('*') // Oczekiwana struktura: { date: "YYYY-MM-DD" }
+        supabase.from('blocked_dates').select('*')
       ]);
 
       if (tasksRes.data) setDailyTasks(tasksRes.data);
+      if (taskListsRes.data) setTaskLists(taskListsRes.data); // <--- NOWE
       if (topicsRes.data) setTopics(topicsRes.data);
       if (examsRes.data) setExams(examsRes.data);
       if (statsRes.data) setGlobalStats(statsRes.data);
@@ -77,7 +80,80 @@ export function DataProvider({ children, session }) {
     }
   };
 
-  // --- FUNKCJE CRUD (Z poprzednich kroków) ---
+  // --- NOWE FUNKCJE TODO ---
+  const saveTask = async (taskData, isEditMode) => {
+    try {
+      const payload = {
+        content: taskData.content,
+        date: taskData.date || null,
+        color: taskData.color || '#3498db',
+        list_id: taskData.list_id || null,
+        note: taskData.note || '',
+        status: taskData.status || 'todo'
+      };
+      
+      if (isEditMode) {
+        await supabase.from('daily_tasks').update(payload).eq('id', taskData.id);
+      } else {
+        payload.id = generateId('task');
+        payload.created_at = new Date().toISOString();
+        await supabase.from('daily_tasks').insert([payload]);
+      }
+      await fetchDashboardData();
+    } catch (error) { console.error("Błąd zapisu zadania:", error); }
+  };
+
+  const deleteTask = async (id) => {
+    try {
+      await supabase.from('daily_tasks').delete().eq('id', id);
+      await fetchDashboardData();
+    } catch (error) { console.error("Błąd:", error); }
+  };
+
+  const toggleTaskStatus = async (task) => {
+    try {
+      const newStatus = task.status === 'done' ? 'todo' : 'done';
+      await supabase.from('daily_tasks').update({ status: newStatus }).eq('id', task.id);
+      await fetchDashboardData();
+    } catch (error) { console.error("Błąd:", error); }
+  };
+
+  const sweepCompletedTasks = async (listId) => {
+    try {
+      let query = supabase.from('daily_tasks').delete().eq('status', 'done');
+      if (listId) query = query.eq('list_id', listId);
+      await query;
+      await fetchDashboardData();
+    } catch (error) { console.error("Błąd czyszczenia listy:", error); }
+  };
+
+  const saveTaskList = async (listData, isEditMode) => {
+    try {
+      const payload = {
+        name: listData.name,
+        list_type: listData.list_type || '',
+        icon: listData.icon || ''
+      };
+      if (isEditMode) {
+        await supabase.from('task_lists').update(payload).eq('id', listData.id);
+      } else {
+        payload.id = generateId('list');
+        await supabase.from('task_lists').insert([payload]);
+      }
+      await fetchDashboardData();
+    } catch (error) { console.error("Błąd:", error); }
+  };
+
+  const deleteTaskList = async (id) => {
+    try {
+      await supabase.from('task_lists').delete().eq('id', id);
+      // Opcjonalnie: usunięcie zadań powiązanych z tą listą
+      await supabase.from('daily_tasks').delete().eq('list_id', id);
+      await fetchDashboardData();
+    } catch (error) { console.error("Błąd:", error); }
+  };
+
+  // --- FUNKCJE CRUD Z POPRZEDNICH ETAPÓW ---
   const saveExam = async (examData, isEditMode) => {
     try {
       const examId = isEditMode ? examData.id : generateId('exam');
@@ -93,13 +169,11 @@ export function DataProvider({ children, session }) {
       };
 
       if (isEditMode) {
-        const { error } = await supabase.from('exams').update(payload).eq('id', examId);
-        if (error) throw error;
+        await supabase.from('exams').update(payload).eq('id', examId);
       } else {
         payload.id = examId;
         payload.note = '';
-        const { error } = await supabase.from('exams').insert([payload]);
-        if (error) throw error;
+        await supabase.from('exams').insert([payload]);
       }
 
       if (examData.topicsRaw !== undefined) {
@@ -138,10 +212,7 @@ export function DataProvider({ children, session }) {
       }
 
       await fetchDashboardData();
-    } catch (error) {
-      console.error("Błąd zapisu egzaminu:", error);
-      alert("Wystąpił błąd podczas zapisu egzaminu.");
-    }
+    } catch (error) { console.error("Błąd:", error); }
   };
 
   const deleteExam = async (id) => {
@@ -160,14 +231,12 @@ export function DataProvider({ children, session }) {
 
   const saveTopic = async (topicData) => {
     try {
-      const { error } = await supabase.from('topics').update({
+      await supabase.from('topics').update({
         name: topicData.name,
         scheduled_date: topicData.scheduled_date || null,
         locked: topicData.locked,
         note: topicData.note || ''
       }).eq('id', topicData.id);
-      
-      if (error) throw error;
       await fetchDashboardData();
     } catch (error) { console.error("Błąd:", error); }
   };
@@ -182,9 +251,7 @@ export function DataProvider({ children, session }) {
   const toggleTopicStatus = async (topicId, currentStatus) => {
     try {
       const newStatus = currentStatus === 'done' ? 'todo' : 'done';
-      const { error } = await supabase.from('topics').update({ status: newStatus }).eq('id', topicId);
-      if (error) throw error;
-      
+      await supabase.from('topics').update({ status: newStatus }).eq('id', topicId);
       if (newStatus === 'done') {
         const stats = globalStats || [];
         const doneStat = stats.find(s => s.key === 'topics_done');
@@ -214,8 +281,7 @@ export function DataProvider({ children, session }) {
       };
 
       if (isEditMode) {
-        const { error } = await supabase.from('custom_events').update(payload).eq('id', eventData.id);
-        if (error) throw error;
+        await supabase.from('custom_events').update(payload).eq('id', eventData.id);
       } else {
         payload.id = generateId('ev');
         await supabase.from('custom_events').insert([payload]);
@@ -273,22 +339,15 @@ export function DataProvider({ children, session }) {
     } catch (error) { console.error("Błąd:", error); }
   };
 
-  // ==========================================
-  // ALGORYTM PLANUJĄCY (Przeniesiony 1:1 z Pythona)
-  // ==========================================
   const runPlanner = async (onlyUnscheduled = false) => {
-    console.log(`Uruchamiam Planner (onlyUnscheduled: ${onlyUnscheduled})...`);
-    
-    // 1. Inicjalizacja Dat i Danych
     const today = new Date();
     today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
     const todayStr = today.toISOString().split('T')[0];
-    const todayNum = new Date(todayStr).getTime(); // Używamy czasu 00:00 w lokalnej strefie do porównań
+    const todayNum = new Date(todayStr).getTime(); 
     
     const blockedSet = new Set((blockedDates || []).map(b => b.date));
     const calendar = {};
 
-    // Szukamy najdalszej daty egzaminu
     let maxDateNum = todayNum;
     exams.forEach(ex => {
       if (!ex.date) return;
@@ -296,15 +355,13 @@ export function DataProvider({ children, session }) {
       if (exDateNum > maxDateNum) maxDateNum = exDateNum;
     });
 
-    // 2. Wypełniamy kalendarz pustymi tablicami od dzisiaj do maxDate
     let currNum = maxDateNum;
     while (currNum >= todayNum) {
       const dStr = new Date(currNum).toISOString().split('T')[0];
       calendar[dStr] = [];
-      currNum -= 86400000; // minus 1 dzień (w milisekundach)
+      currNum -= 86400000;
     }
 
-    // 3. Wstawiamy znaczniki "E" (Bariery Egzaminacyjne)
     exams.forEach(ex => {
       if (ex.ignore_barrier || !ex.date) return;
       if (new Date(ex.date).getTime() >= todayNum) {
@@ -312,7 +369,6 @@ export function DataProvider({ children, session }) {
       }
     });
 
-    // 4. Główna pętla po Egzaminach
     exams.forEach(exam => {
       if (!exam.date) return;
       const examDateNum = new Date(exam.date).getTime();
@@ -321,26 +377,19 @@ export function DataProvider({ children, session }) {
       const endStudyNum = examDateNum - 86400000;
       if (endStudyNum < todayNum) return;
 
-      // Szukamy startu okna nauki (skanowanie wstecz aż do bariery "E" lub dzisiaj)
       let scanNum = endStudyNum;
       while (scanNum > todayNum) {
         const scanStr = new Date(scanNum).toISOString().split('T')[0];
-        if (calendar[scanStr] && calendar[scanStr].includes("E")) {
-          break; // Odbijamy się od bariery
-        }
+        if (calendar[scanStr] && calendar[scanStr].includes("E")) break; 
         scanNum -= 86400000;
       }
       const startStudyNum = scanNum;
 
-      // Zbieramy tematy dla tego egzaminu (odrzucamy Locked i zrobione)
       let tList = topics.filter(t => t.exam_id === exam.id && t.status === "todo" && !t.locked);
-      if (onlyUnscheduled) {
-        tList = tList.filter(t => !t.scheduled_date);
-      }
+      if (onlyUnscheduled) tList = tList.filter(t => !t.scheduled_date);
       
-      if (tList.length === 0) return; // Brak tematów do rozłożenia
+      if (tList.length === 0) return; 
 
-      // Zbieramy dni, które nadają się do nauki
       const validDays = [];
       let cNum = startStudyNum < todayNum ? todayNum : startStudyNum;
       
@@ -348,11 +397,8 @@ export function DataProvider({ children, session }) {
         const curStr = new Date(cNum).toISOString().split('T')[0];
         const hasExam = calendar[curStr] && calendar[curStr].includes("E");
 
-        // Dzień poprawny: nie zablokowany ORAZ (nie ma Egzaminu LUB jest to dzień startowy-odbicie)
         if (!blockedSet.has(curStr)) {
-          if (!hasExam || (hasExam && cNum === startStudyNum)) {
-            validDays.push(curStr);
-          }
+          if (!hasExam || (hasExam && cNum === startStudyNum)) validDays.push(curStr);
         }
         cNum += 86400000;
       }
@@ -360,14 +406,11 @@ export function DataProvider({ children, session }) {
       validDays.sort();
       if (validDays.length === 0) return;
 
-      // ALGORYTM ROZKŁADANIA (Back-loading / Offset)
       const daysTotal = validDays.length;
       const tasksTotal = tList.length;
       let startIndex = 0;
 
-      if (tasksTotal <= daysTotal) {
-        startIndex = daysTotal - tasksTotal; // Przyklej do egzaminu (przesuń w prawo)
-      }
+      if (tasksTotal <= daysTotal) startIndex = daysTotal - tasksTotal; 
 
       for (let i = startIndex; i < daysTotal; i++) {
         if (tList.length === 0) break;
@@ -381,68 +424,47 @@ export function DataProvider({ children, session }) {
         for (let j = 0; j < perDay; j++) {
           if (tList.length > 0) {
             const task = tList.shift();
-            if (calendar[currentDayStr]) {
-              calendar[currentDayStr].push(task.id);
-            }
+            if (calendar[currentDayStr]) calendar[currentDayStr].push(task.id);
           }
         }
       }
     });
 
-    // 5. Zapisanie wyników
     const topicsMap = {};
     topics.forEach(t => topicsMap[t.id] = { ...t });
 
-    // A. Resetowanie starych dat
     if (!onlyUnscheduled) {
       Object.values(topicsMap).forEach(topic => {
-        if (topic.status === "todo" && !topic.locked) {
-          topic.scheduled_date = null;
-        }
+        if (topic.status === "todo" && !topic.locked) topic.scheduled_date = null;
       });
     }
 
-    // B. Przypisywanie wyliczonych dat
     Object.entries(calendar).forEach(([dateStr, items]) => {
       items.forEach(itemId => {
         if (itemId === "E") return;
-        if (topicsMap[itemId]) {
-          topicsMap[itemId].scheduled_date = dateStr;
-        }
+        if (topicsMap[itemId]) topicsMap[itemId].scheduled_date = dateStr;
       });
     });
 
-    // C. Bulk Update do Supabase
     const topicsToUpdate = Object.values(topicsMap).map(t => ({
-      id: t.id,
-      exam_id: t.exam_id,
-      name: t.name,
-      status: t.status,
-      scheduled_date: t.scheduled_date,
-      locked: t.locked,
-      note: t.note
+      id: t.id, exam_id: t.exam_id, name: t.name, status: t.status,
+      scheduled_date: t.scheduled_date, locked: t.locked, note: t.note
     }));
 
     try {
-      const { error } = await supabase.from('topics').upsert(topicsToUpdate);
-      if (error) throw error;
+      await supabase.from('topics').upsert(topicsToUpdate);
       await fetchDashboardData();
-      // Opcjonalnie powiadomienie
-      console.log("Plan wygenerowany pomyślnie!");
-    } catch (err) {
-      console.error("Błąd podczas zapisywania wygenerowanego planu:", err);
-      alert("Failed to save the generated plan.");
-    }
+    } catch (err) { console.error("Błąd planera:", err); }
   };
 
   return (
     <DataContext.Provider value={{ 
-      isLoading, dailyTasks, topics, exams, globalStats,
+      isLoading, dailyTasks, taskLists, topics, exams, globalStats,
       subjects, scheduleEntries, cancellations, customEvents,
       eventLists, semesters, gradeModules, grades,
       fetchDashboardData, saveExam, deleteExam, saveCustomEvent, deleteCustomEvent, saveSubject,
-      toggleTopicStatus, saveExamNote, saveTopic, deleteTopic,
-      runPlanner // <--- NOWOŚĆ: Wyeksportowany planer
+      toggleTopicStatus, saveExamNote, saveTopic, deleteTopic, runPlanner,
+      saveTask, deleteTask, toggleTaskStatus, sweepCompletedTasks, saveTaskList, deleteTaskList
     }}>
       {children}
     </DataContext.Provider>
