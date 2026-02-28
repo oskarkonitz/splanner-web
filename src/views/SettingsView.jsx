@@ -46,17 +46,19 @@ export default function SettingsView({ onBack }) {
   return (
     <div className="flex flex-col h-full bg-[#2b2b2b] text-white">
       
-      {/* HEADER (Widoczny głównie na Mobile/PWA) */}
-      <header className="flex items-center justify-between p-4 md:p-6 border-b border-gray-800 md:border-none">
-        <button 
-          onClick={onBack} 
-          className="flex items-center gap-1 text-[#3498db] text-lg font-medium active:opacity-70 transition-opacity"
-        >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"></path></svg>
-          <span className="md:hidden">Back</span>
-        </button>
-        <h1 className="text-xl md:text-3xl font-bold absolute left-1/2 -translate-x-1/2 md:static md:translate-x-0">Settings</h1>
-        <div className="w-20 md:hidden"></div> {/* Spacer dla wyśrodkowania na mobile */}
+      {/* HEADER (Widoczny głównie na Mobile/PWA) - Zoptymalizowany pod notch */}
+      <header className="relative flex items-center justify-between p-4 pt-[calc(env(safe-area-inset-top)+1rem)] md:p-6 md:pt-[calc(env(safe-area-inset-top)+1.5rem)] border-b border-gray-800 md:border-none shrink-0">
+        <div className="flex-1 flex justify-start">
+          <button 
+            onClick={onBack} 
+            className="flex items-center gap-1 text-[#3498db] text-lg font-medium active:opacity-70 transition-opacity"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"></path></svg>
+            <span className="md:hidden">Back</span>
+          </button>
+        </div>
+        <h1 className="text-xl md:text-3xl font-bold text-center shrink-0">Settings</h1>
+        <div className="flex-1"></div> {/* Spacer dla wyśrodkowania na mobile */}
       </header>
 
       {/* GŁÓWNA ZAWARTOŚĆ */}

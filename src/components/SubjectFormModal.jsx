@@ -149,7 +149,7 @@ export default function SubjectFormModal({ isOpen, onClose, initialData = null }
         
         {/* WIDOK GŁÓWNY */}
         <div className={`absolute inset-0 flex flex-col bg-[#121212] md:bg-[#1c1c1e] transition-transform duration-300 ${activeSlotIndex !== null ? '-translate-x-full' : 'translate-x-0'}`}>
-          <header className="flex items-center justify-between p-4 bg-[#1c1c1e] md:bg-transparent border-b border-gray-800 shrink-0">
+          <header className="flex items-center justify-between p-4 pt-[calc(env(safe-area-inset-top)+1rem)] md:pt-4 bg-[#1c1c1e] md:bg-transparent border-b border-gray-800 shrink-0">
             <button onClick={onClose} className="text-[#3498db] text-lg font-medium active:opacity-70">Cancel</button>
             <h1 className="text-lg font-bold text-white">{isEditMode ? 'Edit Subject' : 'New Subject'}</h1>
             <button onClick={handleSaveMain} className="text-[#3498db] text-lg font-bold active:opacity-70">Save</button>
@@ -206,7 +206,7 @@ export default function SubjectFormModal({ isOpen, onClose, initialData = null }
 
         {/* WIDOK EDYTORA SLOTU */}
         <div className={`absolute inset-0 flex flex-col bg-[#121212] md:bg-[#1c1c1e] z-10 transition-transform duration-300 ${activeSlotIndex !== null ? 'translate-x-0' : 'translate-x-full'}`}>
-          <header className="flex items-center justify-between p-4 bg-[#1c1c1e] md:bg-transparent border-b border-gray-800 shrink-0">
+          <header className="flex items-center justify-between p-4 pt-[calc(env(safe-area-inset-top)+1rem)] md:pt-4 bg-[#1c1c1e] md:bg-transparent border-b border-gray-800 shrink-0">
             <button onClick={() => setActiveSlotIndex(null)} className="flex items-center text-[#3498db] font-medium active:opacity-70">
               <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"></path></svg>
               Back

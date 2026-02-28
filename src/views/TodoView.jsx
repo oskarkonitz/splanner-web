@@ -233,7 +233,9 @@ export default function TodoView({ onBack }) {
     e.stopPropagation();
     e.preventDefault();
     setContextMenu({
-      x: Math.min(e.clientX, window.innerWidth - 200),
+      // ZMIANA: Zmieniono margines z 200 na 240, aby okienko w-56 (224px) 
+      // nigdy nie wychodziło poza prawą krawędź ekranu i nie tworzyło scrolla.
+      x: Math.min(e.clientX, window.innerWidth - 240),
       y: Math.min(e.clientY, window.innerHeight - 150),
       task
     });
@@ -280,12 +282,11 @@ export default function TodoView({ onBack }) {
         draggable
         onDragStart={(e) => onDragStart(e, task)}
         onContextMenu={(e) => handleContextMenu(e, task)}
-        onClick={(e) => handleContextMenu(e, task)} // ZMIANA: Lewy klik = Menu opcji
+        onClick={(e) => handleContextMenu(e, task)}
         className={`flex items-center gap-3 p-3 transition-colors hover:bg-white/5 active:bg-white/10 border-b border-gray-800/50 last:border-0 group cursor-pointer ${isDone ? 'opacity-50' : ''}`}
       >
         <div className="w-1.5 self-stretch rounded-full shrink-0" style={{ backgroundColor: task.color || '#3498db' }}></div>
         
-        {/* Przycisk do szybkiego odhaczania zadań zablokowany przed bąbelkowaniem */}
         <button 
           onClick={(e) => { e.stopPropagation(); toggleTaskStatus(task); }}
           className={`w-6 h-6 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors ${isDone ? 'bg-green-500 border-green-500' : 'border-gray-500 hover:border-gray-400'}`}
@@ -307,7 +308,6 @@ export default function TodoView({ onBack }) {
           )}
         </div>
 
-        {/* Desktop actions na hover - pozostawione bez zmian zgodnie z instrukcją */}
         <div className="hidden md:flex opacity-0 group-hover:opacity-100 transition-opacity gap-1 shrink-0">
            {!task.note && (
              <button onClick={(e) => openNoteEditor(e, task)} className="p-1.5 text-gray-400 hover:text-[#f1c40f] rounded-md hover:bg-white/10" title="Add Note">
@@ -375,8 +375,8 @@ export default function TodoView({ onBack }) {
                     onDrop={(e) => onDropList(e, list.id)}
                     className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-colors ${activeListId === list.id ? 'bg-[#3498db] text-white shadow-md' : (draggedOverList === list.id ? 'bg-[#3498db]/20 border border-[#3498db]/50' : 'text-gray-400 hover:bg-white/5 border border-transparent')}`}
                   >
-                    <div className="flex items-center gap-3 truncate">
-                      <span className="text-lg leading-none">{list.icon || (list.list_type === 'shopping' ? '🛒' : '📁')}</span>
+                    <div className="flex items-center gap-3 truncate min-w-0">
+                      <span className="text-lg leading-none shrink-0">{list.icon || (list.list_type === 'shopping' ? '🛒' : '📁')}</span>
                       <span className="truncate">{list.name}</span>
                     </div>
                   </button>
@@ -401,31 +401,32 @@ export default function TodoView({ onBack }) {
         
         {/* NAGŁÓWEK MOBILE & DESKTOP */}
         <header className={`flex flex-col md:flex-row md:items-center justify-between p-4 pb-2 md:pb-4 border-b border-gray-800 bg-[#1c1c1e] md:bg-transparent shrink-0 md:pt-[calc(env(safe-area-inset-top)+1.5rem)] md:px-8 ${!document.body.classList.contains('md:hidden') ? 'pt-[calc(env(safe-area-inset-top)+1rem)]' : ''}`}>
-          <div className="flex items-center justify-between w-full md:w-auto">
-            <div className="flex items-center gap-3">
-              {/* ZMIANA: Usunięto przycisk powrotu w lewym górnym rogu na widoku mobile */}
-              <h1 className="text-xl md:text-3xl font-bold flex items-center gap-2 truncate">
-                {activeList?.icon && <span>{activeList.icon}</span>}
-                {activeListId === 'all' ? 'All Tasks' : 
-                 activeListId === 'default' ? 'Inbox' :
-                 activeListId === 'scheduled' ? 'Scheduled' :
-                 activeListId === 'unscheduled' ? 'Unscheduled' : 
-                 activeList?.name || 'Tasks'}
+          {/* ZMIANA: min-w-0 dodane na rodzicach, aby h1 mógł bezpiecznie się ucinać (truncate) nie rozciągając ekranu */}
+          <div className="flex items-center justify-between w-full md:w-auto min-w-0 gap-2">
+            <div className="flex items-center gap-3 min-w-0 flex-1 pr-2">
+              <h1 className="text-xl md:text-3xl font-bold flex items-center gap-2 min-w-0 w-full">
+                {activeList?.icon && <span className="shrink-0">{activeList.icon}</span>}
+                <span className="truncate block">
+                  {activeListId === 'all' ? 'All Tasks' : 
+                   activeListId === 'default' ? 'Inbox' :
+                   activeListId === 'scheduled' ? 'Scheduled' :
+                   activeListId === 'unscheduled' ? 'Unscheduled' : 
+                   activeList?.name || 'Tasks'}
+                </span>
               </h1>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               {isShoppingList && groupedTasks.bought?.length > 0 && (
                 <button 
                   onClick={() => sweepCompletedTasks(activeListId)}
                   className="flex items-center gap-2 text-xs font-bold text-red-500 bg-red-500/10 px-3 py-1.5 rounded-lg hover:bg-red-500/20 transition-colors"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                  <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                   <span className="hidden sm:inline">Sweep</span>
                 </button>
               )}
               
-              {/* ZMIANA: Mobile Filter Menu & Dodawanie list pod ikonką z prawej strony */}
               <div className="md:hidden flex items-center gap-1 relative">
                 <button onClick={() => setShowListForm(true)} className="p-2 text-gray-400 hover:text-white transition-colors">
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"></path></svg>
@@ -450,10 +451,10 @@ export default function TodoView({ onBack }) {
                         <button
                           key={list.id}
                           onClick={() => { setActiveListId(list.id); handleCancelEdit(); setMobileFilterOpen(false); }}
-                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${activeListId === list.id ? 'bg-[#3498db] text-white' : 'text-gray-400 hover:bg-white/5'}`}
+                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-colors min-w-0 ${activeListId === list.id ? 'bg-[#3498db] text-white' : 'text-gray-400 hover:bg-white/5'}`}
                         >
-                          <svg className="w-4 h-4 opacity-80" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d={list.icon}></path></svg>
-                          {list.name}
+                          <svg className="w-4 h-4 opacity-80 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d={list.icon}></path></svg>
+                          <span className="truncate text-left">{list.name}</span>
                         </button>
                       ))}
                     </div>
@@ -465,10 +466,10 @@ export default function TodoView({ onBack }) {
                         <button
                           key={list.id}
                           onClick={() => { setActiveListId(list.id); handleCancelEdit(); setMobileFilterOpen(false); }}
-                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${activeListId === list.id ? 'bg-[#3498db] text-white' : 'text-gray-400 hover:bg-white/5'}`}
+                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-colors min-w-0 ${activeListId === list.id ? 'bg-[#3498db] text-white' : 'text-gray-400 hover:bg-white/5'}`}
                         >
-                          <span className="text-base leading-none">{list.icon || (list.list_type === 'shopping' ? '🛒' : '📁')}</span>
-                          <span className="truncate">{list.name}</span>
+                          <span className="text-base leading-none shrink-0">{list.icon || (list.list_type === 'shopping' ? '🛒' : '📁')}</span>
+                          <span className="truncate text-left">{list.name}</span>
                         </button>
                       ))}
                     </div>
@@ -488,15 +489,16 @@ export default function TodoView({ onBack }) {
               placeholder={editingTask ? "Edit task..." : "Add new task..."}
               value={quickAddText}
               onChange={(e) => setQuickAddText(e.target.value)}
-              className="flex-1 bg-[#2b2b2b] md:bg-transparent text-white px-4 py-2.5 md:p-0 rounded-xl md:rounded-none border border-gray-700 md:border-none focus:outline-none focus:border-[#3498db] md:text-lg w-full"
+              className="flex-1 min-w-0 bg-[#2b2b2b] md:bg-transparent text-white px-4 py-2.5 md:p-0 rounded-xl md:rounded-none border border-gray-700 md:border-none focus:outline-none focus:border-[#3498db] md:text-lg w-full"
             />
             
-            <div className="flex items-center justify-between sm:justify-end gap-3 w-full sm:w-auto">
+            {/* ZMIANA: flex-wrap sm:flex-nowrap dla węższych ekranów w module narzędzi */}
+            <div className="flex flex-wrap sm:flex-nowrap items-center justify-between sm:justify-end gap-3 w-full sm:w-auto shrink-0">
                 <div className="flex items-center gap-3 bg-[#2b2b2b] px-3 py-1.5 rounded-xl border border-gray-700">
                   {/* DATA */}
                   {!isShoppingList && !showDateInput && (
                     <button type="button" onClick={() => setShowDateInput(true)} className="text-gray-400 hover:text-[#3498db] transition-colors p-1" title="Set Date">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                      <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                     </button>
                   )}
                   {!isShoppingList && showDateInput && (
@@ -513,18 +515,18 @@ export default function TodoView({ onBack }) {
                     type="color" 
                     value={quickColor}
                     onChange={(e) => setQuickColor(e.target.value)}
-                    className="w-6 h-6 rounded-full border-none bg-transparent cursor-pointer p-0"
+                    className="w-6 h-6 rounded-full border-none bg-transparent cursor-pointer p-0 shrink-0"
                     title="Label Color"
                   />
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   {/* PRZYCISK ANULUJ EDYCJĘ */}
                   {editingTask && (
                     <button 
                       type="button" 
                       onClick={handleCancelEdit}
-                      className="w-10 h-10 text-gray-400 hover:text-white flex items-center justify-center font-bold bg-[#2b2b2b] rounded-full border border-gray-700 transition-colors"
+                      className="w-10 h-10 text-gray-400 hover:text-white flex items-center justify-center font-bold bg-[#2b2b2b] rounded-full border border-gray-700 transition-colors shrink-0"
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg>
                     </button>
@@ -534,7 +536,7 @@ export default function TodoView({ onBack }) {
                   <button 
                     type="submit"
                     disabled={!quickAddText.trim()}
-                    className={`w-10 h-10 text-white rounded-full flex items-center justify-center font-bold disabled:opacity-50 transition-colors shadow-md ${editingTask ? 'bg-green-500 hover:bg-green-600' : 'bg-[#3498db] hover:bg-blue-600'}`}
+                    className={`w-10 h-10 text-white rounded-full flex items-center justify-center font-bold disabled:opacity-50 transition-colors shadow-md shrink-0 ${editingTask ? 'bg-green-500 hover:bg-green-600' : 'bg-[#3498db] hover:bg-blue-600'}`}
                   >
                     {editingTask ? (
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"></path></svg>
@@ -549,7 +551,7 @@ export default function TodoView({ onBack }) {
 
         {/* GŁÓWNA LISTA */}
         <div className="flex-1 overflow-y-auto p-4 md:p-8 pb-32">
-          <div className="max-w-4xl mx-auto space-y-6">
+          <div className="max-w-4xl mx-auto space-y-6 w-full">
             
             {filteredTasks.length === 0 ? (
               <div className="flex flex-col items-center justify-center p-10 mt-10 opacity-50 text-center">

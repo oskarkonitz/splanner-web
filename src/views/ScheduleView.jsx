@@ -332,7 +332,8 @@ export default function ScheduleView({ onBack }) {
     }
 
     setContextMenu({
-      x: Math.min(e.clientX, window.innerWidth - 220),
+      // ZMIANA: Zwiększony margines, aby menu nigdy nie wychodziło poza krawędź ekranu
+      x: Math.min(e.clientX, window.innerWidth - 240),
       y: Math.min(e.clientY, window.innerHeight - 150),
       items
     });
@@ -347,14 +348,15 @@ export default function ScheduleView({ onBack }) {
   return (
     <div className="flex flex-col h-full bg-[#2b2b2b] text-white">
       
-      <header className="flex flex-wrap items-center justify-between p-4 border-b border-gray-800 gap-4">
-        <div className="flex items-center gap-4">
-          <button onClick={onBack} className="md:hidden p-2 text-[#3498db]">
+      {/* ZMIANA: Dodano pt-[calc(env(safe-area-inset-top)+1rem)] na notcha oraz zmniejszono gap-4 na gap-2 sm:gap-4 dla małych ekranów */}
+      <header className="flex flex-wrap items-center justify-between p-4 pt-[calc(env(safe-area-inset-top)+1rem)] border-b border-gray-800 gap-2 sm:gap-4 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+          <button onClick={onBack} className="md:hidden p-2 text-[#3498db] shrink-0">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"></path></svg>
           </button>
-          <h1 className="text-xl md:text-3xl font-bold hidden md:block">Schedule</h1>
+          <h1 className="text-xl md:text-3xl font-bold hidden md:block truncate">Schedule</h1>
           
-          <div className="relative">
+          <div className="relative shrink-0">
             <button 
               onClick={(e) => { e.stopPropagation(); setShowFilters(!showFilters); setContextMenu(null); }}
               className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${(selectedSemesters.size > 0 || selectedLists.size > 0) ? 'bg-[#3498db] border-[#3498db] text-white' : 'border-gray-600 text-gray-300 hover:bg-gray-800'}`}
@@ -383,32 +385,34 @@ export default function ScheduleView({ onBack }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* ZMIANA: Optymalizacja prawej sekcji nagłówka pod małe ekrany */}
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           <button 
             onClick={() => { setFormInitialData(null); setShowEventForm(true); }} 
-            className="p-1.5 text-gray-400 hover:text-[#3498db] transition-colors md:mr-2"
+            className="p-1.5 text-gray-400 hover:text-[#3498db] transition-colors md:mr-2 shrink-0"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"></path></svg>
           </button>
 
-          <div className="flex items-center gap-2 bg-[#1c1c1e] p-1 rounded-xl border border-gray-800">
-            <button onClick={prevWeek} className="p-1.5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors">
+          <div className="flex items-center gap-0.5 sm:gap-2 bg-[#1c1c1e] p-1 rounded-xl border border-gray-800 min-w-0">
+            <button onClick={prevWeek} className="p-1 sm:p-1.5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors shrink-0">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path></svg>
             </button>
-            <div className="text-sm font-bold min-w-[130px] text-center">
+            <div className="text-xs sm:text-sm font-bold min-w-[105px] sm:min-w-[130px] text-center truncate">
               {weekDates[0].toLocaleDateString('en-GB', {day: '2-digit', month: '2-digit'})} - {weekDates[6].toLocaleDateString('en-GB', {day: '2-digit', month: '2-digit'})}
             </div>
-            <button onClick={nextWeek} className="p-1.5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors">
+            <button onClick={nextWeek} className="p-1 sm:p-1.5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors shrink-0">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
             </button>
-            <div className="w-px h-5 bg-gray-700 mx-1"></div>
-            <button onClick={goToToday} className="px-3 py-1 text-sm font-medium text-gray-300 hover:text-white transition-colors">Today</button>
+            <div className="w-px h-5 bg-gray-700 mx-0.5 sm:mx-1 shrink-0"></div>
+            <button onClick={goToToday} className="px-2 sm:px-3 py-1 text-xs sm:text-sm font-medium text-gray-300 hover:text-white transition-colors shrink-0">Today</button>
           </div>
         </div>
       </header>
 
       <div className="md:hidden flex flex-col flex-1 overflow-hidden bg-[#121212]">
-        <div className="flex overflow-x-auto gap-3 px-4 py-3 bg-[#1c1c1e] border-b border-gray-800 scrollbar-hide">
+        {/* ZMIANA: Użycie flex-1 na elementach dni zamiast sztywnych szerokości, zapobiega to scrollowi/ucinaniu */}
+        <div className="flex justify-between sm:justify-start overflow-x-auto gap-1 sm:gap-3 px-2 sm:px-4 py-2 sm:py-3 bg-[#1c1c1e] border-b border-gray-800 scrollbar-hide">
           {weekDates.map((date, i) => {
             const dateStr = toDateString(date);
             const isSelected = dateStr === selectedDate;
@@ -417,10 +421,10 @@ export default function ScheduleView({ onBack }) {
               <button 
                 key={i} 
                 onClick={() => setSelectedDate(dateStr)}
-                className={`flex flex-col items-center justify-center min-w-[50px] py-2 rounded-xl transition-colors ${isSelected ? 'bg-[#3498db] text-white shadow-md' : 'bg-transparent text-gray-400'}`}
+                className={`flex flex-col items-center justify-center flex-1 sm:flex-none sm:min-w-[50px] py-1.5 sm:py-2 rounded-xl transition-colors ${isSelected ? 'bg-[#3498db] text-white shadow-md' : 'bg-transparent text-gray-400'}`}
               >
-                <span className={`text-xs font-semibold ${isSelected ? 'text-white' : 'text-gray-500'}`}>{DAYS[i].toUpperCase()}</span>
-                <span className={`text-xl font-bold mt-1 ${isSelected ? 'text-white' : (isToday ? 'text-[#3498db]' : 'text-gray-300')}`}>
+                <span className={`text-[10px] sm:text-xs font-semibold ${isSelected ? 'text-white' : 'text-gray-500'}`}>{DAYS[i].toUpperCase()}</span>
+                <span className={`text-lg sm:text-xl font-bold mt-0.5 sm:mt-1 ${isSelected ? 'text-white' : (isToday ? 'text-[#3498db]' : 'text-gray-300')}`}>
                   {date.getDate()}
                 </span>
               </button>
@@ -447,12 +451,12 @@ export default function ScheduleView({ onBack }) {
                   {block.endTime && <span className="text-xs text-gray-500 font-medium">{block.endTime}</span>}
                 </div>
                 <div className="w-px bg-gray-800"></div>
-                <div className="flex-1 flex flex-col justify-center">
+                <div className="flex-1 flex flex-col justify-center min-w-0">
                   {block.type === 'exam' && <span className="text-[10px] font-bold text-red-500 mb-0.5">{block.subtitle}</span>}
-                  <span className="font-bold text-white text-base leading-tight mb-1">{block.title}</span>
+                  <span className="font-bold text-white text-base leading-tight mb-1 truncate">{block.title}</span>
                   {block.type !== 'exam' && block.subtitle && (
-                    <span className="text-xs text-gray-400 flex items-center gap-1.5">
-                      {block.type === 'class' && <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.838L7.667 9.088l1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.838l-7-3zM3.31 8.56l-1.222.524a1 1 0 000 1.838l7 3a1 1 0 00.788 0l7-3a1 1 0 000-1.838H16.8l-6.4 2.743a1 1 0 01-.8 0L3.31 8.56z"/></svg>}
+                    <span className="text-xs text-gray-400 flex items-center gap-1.5 truncate">
+                      {block.type === 'class' && <svg className="w-3.5 h-3.5 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.838L7.667 9.088l1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.838l-7-3zM3.31 8.56l-1.222.524a1 1 0 000 1.838l7 3a1 1 0 00.788 0l7-3a1 1 0 000-1.838H16.8l-6.4 2.743a1 1 0 01-.8 0L3.31 8.56z"/></svg>}
                       {block.subtitle}
                     </span>
                   )}

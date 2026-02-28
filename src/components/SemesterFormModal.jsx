@@ -58,7 +58,7 @@ export default function SemesterFormModal({ isOpen, onClose, initialData, onSave
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 md:bg-black/60 md:backdrop-blur-sm transition-opacity p-0 md:p-4">
       <div className="bg-[#121212] md:bg-[#1c1c1e] w-full h-full md:h-auto md:max-h-[85vh] md:w-full md:max-w-md flex flex-col md:rounded-3xl md:border md:border-white/10 md:shadow-2xl animate-in fade-in slide-in-from-bottom-4 md:zoom-in-95">
         
-        <header className="flex items-center justify-between p-4 bg-[#1c1c1e] md:bg-transparent border-b border-gray-800 shrink-0">
+        <header className="flex items-center justify-between p-4 pt-[calc(env(safe-area-inset-top)+1rem)] md:pt-4 bg-[#1c1c1e] md:bg-transparent border-b border-gray-800 shrink-0">
           <button onClick={onClose} className="text-[#3498db] text-lg font-medium active:opacity-70">Cancel</button>
           <h1 className="text-lg font-bold text-white">{isEditMode ? 'Edit Semester' : 'New Semester'}</h1>
           <button onClick={handleSave} className="text-[#3498db] text-lg font-bold active:opacity-70">Save</button>
