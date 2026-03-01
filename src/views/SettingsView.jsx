@@ -10,6 +10,11 @@ export default function SettingsView({ onBack }) {
   // Stan wykrywający system operacyjny
   const [isWindows, setIsWindows] = useState(false)
 
+  // Stany dla zmiany hasła
+  const [newPassword, setNewPassword] = useState('')
+  const [passwordMessage, setPasswordMessage] = useState({ type: '', text: '' })
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false)
+
   // Sprawdzanie systemu po załadowaniu komponentu
   useEffect(() => {
     const checkIsWindows = /Win/i.test(navigator.userAgent);
@@ -87,6 +92,27 @@ export default function SettingsView({ onBack }) {
     setActiveModal(null);
   };
 
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    setIsUpdatingPassword(true);
+    setPasswordMessage({ type: 'info', text: 'Updating password...' });
+
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    
+    setIsUpdatingPassword(false);
+
+    if (error) {
+      setPasswordMessage({ type: 'error', text: error.message });
+    } else {
+      setPasswordMessage({ type: 'success', text: 'Password updated successfully!' });
+      setNewPassword('');
+      setTimeout(() => {
+        setActiveModal(null);
+        setPasswordMessage({ type: '', text: '' });
+      }, 2000);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 md:relative md:inset-auto md:z-auto flex flex-col h-full bg-[#2b2b2b] text-white">
       
@@ -122,7 +148,6 @@ export default function SettingsView({ onBack }) {
           />
         </Section>
 
-        {/* Nowa sekcja renderowana tylko dla systemu Windows */}
         {isWindows && (
           <Section title="App & Integration">
             <Row 
@@ -143,6 +168,16 @@ export default function SettingsView({ onBack }) {
               <div className="font-medium">{session?.user?.email || "Unknown User"}</div>
             </div>
           </div>
+          <Row 
+            title="Change Password" 
+            icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4v-3.252l1.465-1.465A6 6 0 0115 9z"></path></svg>}
+            hasArrow
+            onClick={() => {
+              setPasswordMessage({ type: '', text: '' });
+              setNewPassword('');
+              setActiveModal('changePassword');
+            }} 
+          />
           <Row 
             title="Log Out" 
             icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>}
@@ -183,6 +218,54 @@ export default function SettingsView({ onBack }) {
                     Cancel
                   </button>
                 </div>
+              </>
+            )}
+
+            {activeModal === 'changePassword' && (
+              <>
+                <div className="text-center mb-2">
+                  <h3 className="text-xl font-bold">Change Password</h3>
+                  <p className="text-gray-400 text-sm mt-1">Enter your new password below.</p>
+                </div>
+                
+                <form onSubmit={handleChangePassword} className="flex flex-col gap-4">
+                  <input 
+                    type="password" 
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                    minLength={6}
+                    placeholder="New Password"
+                    className="w-full bg-[#2b2b2b] border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#3498db] transition-colors"
+                  />
+                  
+                  {passwordMessage.text && (
+                    <div className={`p-3 rounded-xl text-sm font-medium text-center ${passwordMessage.type === 'error' ? 'bg-red-500/10 text-red-500' : passwordMessage.type === 'success' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-[#3498db]'}`}>
+                      {passwordMessage.text}
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-3 mt-2">
+                    <button 
+                      type="submit"
+                      disabled={isUpdatingPassword || newPassword.length < 6}
+                      className="w-full py-3 bg-[#3498db] hover:bg-[#2980b9] disabled:bg-gray-600 disabled:text-gray-400 text-white rounded-xl font-bold transition-colors flex justify-center items-center h-12"
+                    >
+                      {isUpdatingPassword ? (
+                        <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></span>
+                      ) : (
+                        "Update Password"
+                      )}
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => setActiveModal(null)} 
+                      className="w-full py-3 bg-white/5 hover:bg-white/10 rounded-xl font-medium transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
               </>
             )}
 
