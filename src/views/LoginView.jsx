@@ -44,7 +44,7 @@ export default function LoginView() {
       
       {/* Nagłówek */}
       <div className="flex flex-col items-center mb-10 mt-8 md:mt-0">
-        <h1 className="text-4xl font-bold text-white mb-2 tracking-tight">StudyPlanner</h1>
+        <h1 className="text-4xl font-bold text-white mb-2 tracking-tight">Splanner</h1>
         <p className="text-gray-400 text-sm">
           {isRegistering ? "Create your account" : "Sign in to continue"}
         </p>

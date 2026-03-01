@@ -1,14 +1,31 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { supabase } from '../api/supabase'
 import { useData } from '../context/DataContext'
 
 export default function SettingsView({ onBack }) {
-  const { session } = useData()
+  const { session, taskLists, settings, updateSetting } = useData()
   
-  // Stan do zarządzania okienkami (modalami) na wzór LoginView
   const [activeModal, setActiveModal] = useState(null)
 
-  // Pomocniczy komponent do renderowania sekcji na wzór iOS Form
+  const shoppingLists = useMemo(() => {
+    return taskLists.filter(list => list.list_type === 'shopping');
+  }, [taskLists]);
+
+  const currentShoppingListName = useMemo(() => {
+    const listId = settings?.main_shopping_list_id;
+    if (!listId) return "None";
+    const list = shoppingLists.find(l => l.id === listId);
+    return list ? list.name : "None";
+  }, [settings, shoppingLists]);
+
+  const currentBadgeModeName = useMemo(() => {
+    const mode = settings?.badge_mode || 'default';
+    if (mode === 'default') return 'Default (Numbers)';
+    if (mode === 'dot') return 'Dots Only';
+    if (mode === 'off') return 'Off';
+    return 'Default (Numbers)';
+  }, [settings]);
+
   const Section = ({ title, children }) => (
     <div className="mb-6">
       {title && <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 ml-4">{title}</h2>}
@@ -18,7 +35,6 @@ export default function SettingsView({ onBack }) {
     </div>
   )
 
-  // Pomocniczy komponent wiersza w stylu iOS
   const Row = ({ icon, title, value, onClick, isDestructive, hasArrow }) => (
     <button 
       onClick={onClick}
@@ -39,10 +55,19 @@ export default function SettingsView({ onBack }) {
     </button>
   )
 
+  const handleSelectShoppingList = async (listId) => {
+    await updateSetting('main_shopping_list_id', listId);
+    setActiveModal(null);
+  };
+
+  const handleSelectBadgeMode = async (mode) => {
+    await updateSetting('badge_mode', mode);
+    setActiveModal(null);
+  };
+
   return (
     <div className="fixed inset-0 z-50 md:relative md:inset-auto md:z-auto flex flex-col h-full bg-[#2b2b2b] text-white">
       
-      {/* HEADER (Widoczny głównie na Mobile/PWA) - Zoptymalizowany pod notch */}
       <header className="relative flex items-center justify-between p-4 pt-[calc(env(safe-area-inset-top)+1rem)] md:p-6 md:pt-[calc(env(safe-area-inset-top)+1.5rem)] border-b border-gray-800 md:border-none shrink-0">
         <div className="flex-1 flex justify-start">
           <button 
@@ -54,14 +79,25 @@ export default function SettingsView({ onBack }) {
           </button>
         </div>
         <h1 className="text-xl md:text-3xl font-bold text-center shrink-0">Settings</h1>
-        <div className="flex-1"></div> {/* Spacer dla wyśrodkowania na mobile */}
+        <div className="flex-1"></div> 
       </header>
 
-      {/* GŁÓWNA ZAWARTOŚĆ */}
       <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-8 max-w-3xl mx-auto w-full">
         
         <Section title="Preferences">
           <Row title="Tasks Shortcuts" hasArrow onClick={() => setActiveModal('shortcuts')} />
+          <Row 
+            title="Main Shopping List" 
+            value={currentShoppingListName} 
+            hasArrow 
+            onClick={() => setActiveModal('shoppingList')} 
+          />
+          <Row 
+            title="Sidebar Badges Mode" 
+            value={currentBadgeModeName} 
+            hasArrow 
+            onClick={() => setActiveModal('badgeMode')} 
+          />
         </Section>
 
         <Section title="Account">
@@ -85,17 +121,13 @@ export default function SettingsView({ onBack }) {
         </div>
       </main>
 
-      {/* --- MODALE (Okienka na wzór LoginView) --- */}
+      {/* --- MODALE --- */}
       {activeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-opacity">
-          
-          {/* Tło klikalne do zamknięcia */}
           <div className="absolute inset-0" onClick={() => setActiveModal(null)}></div>
 
-          {/* Karta Modala (w stylu LoginView) */}
           <div className="relative bg-[#1c1c1e] p-6 rounded-3xl shadow-2xl border border-white/10 w-full max-w-sm flex flex-col gap-6 animate-in fade-in zoom-in-95 duration-200">
             
-            {/* Modal: Wylogowanie */}
             {activeModal === 'logout' && (
               <>
                 <div className="text-center">
@@ -119,8 +151,84 @@ export default function SettingsView({ onBack }) {
               </>
             )}
 
-            {/* Modal: Placeholdery na resztę */}
-            {(activeModal === 'shortcuts') && (
+            {activeModal === 'shoppingList' && (
+              <>
+                <div className="text-center mb-2">
+                  <h3 className="text-xl font-bold">Select Shopping List</h3>
+                  <p className="text-gray-400 text-sm mt-1">Choose which list to display on the dashboard widget.</p>
+                </div>
+                
+                <div className="flex flex-col gap-2 max-h-60 overflow-y-auto pr-1">
+                  {shoppingLists.length === 0 ? (
+                    <div className="text-center text-gray-500 py-4 text-sm">No shopping lists created yet.</div>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => handleSelectShoppingList(null)}
+                        className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium transition-colors ${!settings?.main_shopping_list_id ? 'bg-[#3498db] text-white' : 'bg-[#2b2b2b] text-gray-300 hover:bg-gray-800'}`}
+                      >
+                        None
+                      </button>
+                      {shoppingLists.map(list => (
+                        <button
+                          key={list.id}
+                          onClick={() => handleSelectShoppingList(list.id)}
+                          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${settings?.main_shopping_list_id === list.id ? 'bg-[#3498db] text-white' : 'bg-[#2b2b2b] text-gray-300 hover:bg-gray-800'}`}
+                        >
+                          <span className="text-lg">{list.icon || '🛒'}</span>
+                          <span className="truncate">{list.name}</span>
+                        </button>
+                      ))}
+                    </>
+                  )}
+                </div>
+
+                <button 
+                  onClick={() => setActiveModal(null)} 
+                  className="w-full py-3 bg-white/5 hover:bg-white/10 rounded-xl font-medium transition-colors mt-2"
+                >
+                  Close
+                </button>
+              </>
+            )}
+
+            {activeModal === 'badgeMode' && (
+              <>
+                <div className="text-center mb-2">
+                  <h3 className="text-xl font-bold">Sidebar Badges</h3>
+                  <p className="text-gray-400 text-sm mt-1">Choose how task indicators look in the desktop menu.</p>
+                </div>
+                
+                <div className="flex flex-col gap-2">
+                  {[
+                    { id: 'default', name: 'Default (Numbers & Colors)' },
+                    { id: 'dot', name: 'Dots Only (Minimal)' },
+                    { id: 'off', name: 'Off' }
+                  ].map(mode => (
+                    <button
+                      key={mode.id}
+                      onClick={() => handleSelectBadgeMode(mode.id)}
+                      className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
+                        (settings?.badge_mode || 'default') === mode.id 
+                        ? 'bg-[#3498db] text-white' 
+                        : 'bg-[#2b2b2b] text-gray-300 hover:bg-gray-800'
+                      }`}
+                    >
+                      {mode.name}
+                    </button>
+                  ))}
+                </div>
+
+                <button 
+                  onClick={() => setActiveModal(null)} 
+                  className="w-full py-3 bg-white/5 hover:bg-white/10 rounded-xl font-medium transition-colors mt-2"
+                >
+                  Close
+                </button>
+              </>
+            )}
+
+            {activeModal === 'shortcuts' && (
               <>
                 <h3 className="text-xl font-bold text-center">Work in progress</h3>
                 <p className="text-gray-400 text-sm text-center">This feature is being ported from the iOS app.</p>

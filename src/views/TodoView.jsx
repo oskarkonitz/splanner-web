@@ -2,14 +2,22 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { useData } from '../context/DataContext';
 import NoteEditorModal from '../components/NoteEditorModal';
 
-export default function TodoView({ onBack }) {
+export default function TodoView({ onBack, initialListId = 'all' }) {
   const { 
     dailyTasks, taskLists, saveTask, deleteTask, toggleTaskStatus, 
     sweepCompletedTasks, saveTaskList, deleteTaskList 
   } = useData();
 
   // --- STANY GŁÓWNE ---
-  const [activeListId, setActiveListId] = useState('all');
+  // Inicjujemy na podstawie przekazanego initialListId
+  const [activeListId, setActiveListId] = useState(initialListId);
+  
+  // Jeśli initialListId się zmieni z zewnątrz, aktualizujemy widok
+  useEffect(() => {
+    if (initialListId) {
+      setActiveListId(initialListId);
+    }
+  }, [initialListId]);
   
   // Pasek Quick Add / Edit
   const [quickAddText, setQuickAddText] = useState('');
@@ -82,6 +90,10 @@ export default function TodoView({ onBack }) {
 
       if (!matchesList) return false;
       if (isShoppingList) return true;
+      
+      // Ukrywamy wykonane zadania bez daty w standardowych listach
+      if (task.status === 'done' && !tDate) return false;
+      
       if (task.status === 'done' && tDate && tDate < todayStr) return false;
 
       return true;
@@ -733,7 +745,7 @@ export default function TodoView({ onBack }) {
                   <label className={`p-4 border rounded-xl flex items-center gap-3 cursor-pointer transition-colors ${listFormType === 'shopping' ? 'bg-[#3498db]/10 border-[#3498db]' : 'border-gray-800 hover:bg-white/5'}`}>
                     <input type="radio" name="listType" checked={listFormType === 'shopping'} onChange={() => setListFormType('shopping')} className="accent-[#3498db]" />
                     <div>
-                      <div className="font-bold text-white">Shopping / Dateless</div>
+                      <div className="font-bold text-white">Shopping</div>
                       <div className="text-xs text-gray-500">Simple checklists without dates.</div>
                     </div>
                   </label>

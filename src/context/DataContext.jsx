@@ -17,6 +17,7 @@ export function DataProvider({ children, session }) {
   const [topics, setTopics] = useState([]);
   const [exams, setExams] = useState([]);
   const [globalStats, setGlobalStats] = useState([]);
+  const [settings, setSettings] = useState({});
   
   const [subjects, setSubjects] = useState([]);
   const [scheduleEntries, setScheduleEntries] = useState([]);
@@ -44,6 +45,7 @@ export function DataProvider({ children, session }) {
     try {
       const [
         tasksRes, taskListsRes, topicsRes, examsRes, statsRes, 
+        settingsRes, // <--- POBIERANIE USTAWIEŃ
         subjectsRes, scheduleRes, cancellationsRes, 
         customEventsRes, eventListsRes, semestersRes,
         gradeModulesRes, gradesRes, blockedRes, subscriptionsRes,
@@ -54,6 +56,7 @@ export function DataProvider({ children, session }) {
         supabase.from('topics').select('*'),
         supabase.from('exams').select('*'),
         supabase.from('global_stats').select('*'),
+        supabase.from('settings').select('*'), // <--- ZAPYTANIE O USTAWIENIA
         supabase.from('subjects').select('*'),
         supabase.from('schedule_entries').select('*'),
         supabase.from('schedule_cancellations').select('*'),
@@ -72,6 +75,17 @@ export function DataProvider({ children, session }) {
       if (topicsRes.data) setTopics(topicsRes.data);
       if (examsRes.data) setExams(examsRes.data);
       if (statsRes.data) setGlobalStats(statsRes.data);
+      
+      // Mapowanie ustawień na płaski obiekt key: value
+      if (settingsRes.data) {
+        const settingsObj = {};
+        settingsRes.data.forEach(item => {
+          let val = item.value;
+          try { val = JSON.parse(val); } catch (e) { /* ignore */ }
+          settingsObj[item.key] = val;
+        });
+        setSettings(settingsObj);
+      }
       
       if (subjectsRes.data) setSubjects(subjectsRes.data);
       if (scheduleRes.data) setScheduleEntries(scheduleRes.data);
@@ -138,6 +152,19 @@ export function DataProvider({ children, session }) {
       }
     }
   }, [dailyTasks, topics, exams, subjects, grades, gradeModules, blockedDates, globalStats, isLoading]);
+
+  // --- ZAPISYWANIE USTAWIENIA (POJEDYNCZY KLUCZ) ---
+  const updateSetting = async (key, value) => {
+    try {
+      const valToSave = typeof value === 'object' ? JSON.stringify(value) : value;
+      await supabase.from('settings').upsert({ key: key, value: valToSave });
+      
+      // Optymistyczna aktualizacja lokalnego stanu
+      setSettings(prev => ({ ...prev, [key]: value }));
+    } catch (error) {
+      console.error("Błąd aktualizacji ustawienia:", error);
+    }
+  };
 
   const saveTask = async (taskData, isEditMode) => {
     try {
@@ -650,7 +677,9 @@ export function DataProvider({ children, session }) {
       isLoading, dailyTasks, taskLists, topics, exams, globalStats,
       subjects, scheduleEntries, cancellations, customEvents,
       eventLists, semesters, gradeModules, grades,
-      subscriptions, achievements, // <--- NOWE
+      subscriptions, achievements, 
+      settings, // <--- UDOSTĘPNIANIE USTAWEŃ
+      updateSetting, // <--- UDOSTĘPNIANIE FUNKCJI AKTUALIZACJI
       fetchDashboardData, saveExam, deleteExam, saveCustomEvent, deleteCustomEvent, saveSubject,
       toggleTopicStatus, saveExamNote, saveTopic, deleteTopic, runPlanner,
       saveTask, deleteTask, toggleTaskStatus, sweepCompletedTasks, saveTaskList, deleteTaskList,

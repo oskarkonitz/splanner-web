@@ -9,8 +9,6 @@ export default function PlanView({ onBack }) {
     exams, topics, subjects, toggleTopicStatus, deleteTopic, runPlanner, 
     saveExamNote, saveTopic, deleteExam 
   } = useData();
-
-  const [expandedDates, setExpandedDates] = useState({});
   
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState(null); 
@@ -61,13 +59,6 @@ export default function PlanView({ onBack }) {
   }, [topics, exams, todayStr]);
 
   useEffect(() => {
-    setExpandedDates(prev => {
-      if (prev[todayStr] === undefined) return { ...prev, [todayStr]: true };
-      return prev;
-    });
-  }, [todayStr]);
-
-  useEffect(() => {
     const closeMenus = () => { 
       setContextMenu(null); 
       setActionMenuOpen(false);
@@ -75,10 +66,6 @@ export default function PlanView({ onBack }) {
     window.addEventListener('click', closeMenus);
     return () => window.removeEventListener('click', closeMenus);
   }, []);
-
-  const toggleAccordion = (date) => {
-    setExpandedDates(prev => ({ ...prev, [date]: !prev[date] }));
-  };
 
   const handleContextMenu = (e, item, type) => {
     e.stopPropagation();
@@ -242,72 +229,64 @@ export default function PlanView({ onBack }) {
         ) : (
           <>
             {/* ---------------------------------------------------- */}
-            {/* WIDOK PWA / MOBILE (Harmonijka / Accordion)          */}
+            {/* WIDOK PWA / MOBILE (Oś czasu zamiast akordeonów)     */}
             {/* ---------------------------------------------------- */}
-            <div className="md:hidden max-w-4xl mx-auto space-y-4 px-4 pt-4">
-              {groupedPlan.map(plan => {
-                const isExpanded = expandedDates[plan.date] ?? false;
+            <div className="md:hidden max-w-4xl mx-auto px-4 pt-6 pb-10">
+              {groupedPlan.map((plan, index) => {
                 const isHovered = draggedOverDate === plan.date;
+                const isLast = index === groupedPlan.length - 1;
                 
                 return (
                   <div 
                     key={`mob_${plan.id}`} 
-                    className={`bg-[#1c1c1e] rounded-2xl overflow-hidden border shadow-md transition-colors duration-200 ${isHovered ? 'border-[#3498db] bg-[#3498db]/10' : 'border-white/5'}`}
+                    className="flex relative pb-8 group"
                     onDragOver={(e) => handleDragOver(e, plan.date)}
                     onDragLeave={handleDragLeave}
                     onDrop={(e) => handleDrop(e, plan.date)}
                   >
                     
-                    <div 
-                      className="flex flex-wrap gap-2 items-center justify-between p-4 cursor-pointer hover:bg-white/5 transition-colors"
-                      onClick={() => toggleAccordion(plan.date)}
-                    >
-                      <span className={`font-bold ${plan.isToday ? 'text-[#3498db] text-lg' : 'text-gray-200'}`}>
-                        {plan.isToday ? `Today (${plan.date})` : plan.date}
-                      </span>
-                      <div className="flex items-center gap-3">
-                        <div className={`flex gap-2 ${isExpanded ? 'hidden' : 'flex'}`}>
-                          {plan.topics.length > 0 && (
-                            <span className="bg-blue-500/15 text-[#3498db] px-2.5 py-1 rounded-md text-xs font-bold truncate max-w-[100px]">
-                              {plan.topics.length} topics
-                            </span>
-                          )}
-                          {plan.exams.length > 0 && (
-                            <span className="flex items-center gap-1 bg-red-500/15 text-red-500 px-2.5 py-1 rounded-md text-xs font-bold truncate max-w-[120px]">
-                              {plan.exams[0].title}{plan.exams.length > 1 ? ', ...' : ''}
-                            </span>
-                          )}
-                        </div>
-                        <svg className={`w-5 h-5 text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"></path></svg>
-                      </div>
+                    {/* Linia i Kropka (Oś czasu) */}
+                    <div className="w-12 shrink-0 flex flex-col items-center relative">
+                      <div className={`w-3.5 h-3.5 rounded-full z-10 mt-1.5 transition-colors ${plan.isToday ? 'bg-[#3498db] ring-4 ring-[#3498db]/20' : 'bg-gray-600'}`}></div>
+                      {!isLast && <div className="absolute top-3 bottom-[-2rem] w-px bg-gray-800"></div>}
                     </div>
 
-                    {isExpanded && (
-                      <div className="border-t border-gray-800 bg-[#121212]/30 min-h-[50px]">
+                    {/* Treść dla danego dnia */}
+                    <div className={`flex-1 min-w-0 transition-all duration-200 ${isHovered ? 'bg-[#3498db]/10 rounded-xl p-2 -m-2' : ''}`}>
+                      
+                      <div className="mb-3 flex items-baseline gap-2">
+                        <span className={`font-bold text-lg ${plan.isToday ? 'text-[#3498db]' : 'text-gray-200'}`}>
+                          {plan.isToday ? 'Today' : plan.date}
+                        </span>
+                        <span className="text-xs text-gray-500 font-medium break-words">
+                          {plan.isToday ? plan.date : getDaysStatus(plan.date)}
+                        </span>
+                      </div>
+
+                      <div className="space-y-2">
                         {plan.topics.length === 0 && plan.exams.length === 0 ? (
-                          <div className="p-4 text-sm text-gray-500 italic">Drop topic here...</div>
+                          <div className="text-sm text-gray-500 italic py-2">No tasks</div>
                         ) : (
-                          <div className="flex flex-col">
-                            
+                          <>
                             {/* Egzaminy Mobile */}
                             {plan.exams.map(exam => (
                               <div 
-                                key={`ex_${exam.id}`} 
+                                key={`mob_ex_${exam.id}`} 
                                 onClick={(e) => handleContextMenu(e, exam, 'exam')}
-                                className="flex items-center justify-between p-4 border-b border-gray-800/50 bg-red-500/5 cursor-pointer active:bg-red-500/10"
+                                className="flex items-center justify-between p-3 bg-red-500/10 border border-red-500/20 rounded-xl cursor-pointer active:bg-red-500/20 transition-colors"
                               >
-                                <div className="flex items-center gap-3">
-                                  <svg className="w-5 h-5 text-red-500 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z" clipRule="evenodd"/></svg>
-                                  <span className="font-bold text-red-500 text-sm">EXAM: {exam.title} ({exam.subject})</span>
+                                <div className="flex flex-col gap-0.5 min-w-0 pr-2">
+                                  <div className="flex items-center gap-1.5">
+                                    <svg className="w-4 h-4 text-red-500 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z" clipRule="evenodd"/></svg>
+                                    <span className="font-bold text-red-500 text-xs">EXAM</span>
+                                  </div>
+                                  <span className="font-semibold text-red-400 text-sm truncate">{exam.title} ({exam.subject})</span>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  {exam.note && (
-                                    <span onClick={(e) => openNoteEditor(e, exam, 'exam')} className="text-xs text-red-300 bg-red-900/30 px-2 py-1 rounded-md">
-                                      ✎ Note
-                                    </span>
-                                  )}
-                                  <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z"></path></svg>
-                                </div>
+                                {exam.note && (
+                                  <span onClick={(e) => openNoteEditor(e, exam, 'exam')} className="text-[10px] text-red-300 bg-red-900/40 px-2 py-1 rounded-md shrink-0">
+                                    ✎ Note
+                                  </span>
+                                )}
                               </div>
                             ))}
 
@@ -320,52 +299,53 @@ export default function PlanView({ onBack }) {
 
                               return (
                                 <div 
-                                  key={topic.id}
+                                  key={`mob_top_${topic.id}`}
                                   draggable
                                   onDragStart={(e) => handleDragStart(e, topic)}
-                                  className={`flex items-stretch border-b border-gray-800/50 last:border-b-0 transition-colors hover:bg-white/5 active:bg-white/5 ${isDone ? 'opacity-50' : ''}`}
+                                  className={`flex items-center gap-3 p-3 bg-[#1c1c1e] border border-white/5 rounded-xl cursor-pointer transition-colors active:bg-white/5 ${isDone ? 'opacity-50' : ''}`}
+                                  onClick={(e) => handleContextMenu(e, topic, 'topic')}
                                 >
-                                  {/* LEWA STRONA (TOGGLE) */}
+                                  {/* Checkbox (toggle status) */}
                                   <div 
-                                    className="flex items-center gap-3 p-4 pr-2 cursor-pointer w-2/5 shrink-0"
+                                    className="shrink-0 py-1"
                                     onClick={(e) => { e.stopPropagation(); toggleTopicStatus(topic.id, topic.status); }}
                                   >
-                                    <div className={`w-6 h-6 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors ${isDone ? 'bg-green-500 border-green-500' : 'border-gray-500'}`}>
-                                      {isDone && <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"></path></svg>}
+                                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${isDone ? 'bg-green-500 border-green-500' : 'border-gray-500'}`}>
+                                      {isDone && <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"></path></svg>}
                                     </div>
-                                    <span className="text-xs font-bold opacity-90 truncate" style={{ color: subjectColor }}>
-                                      {exam?.subject || "Unknown Exam"}
+                                  </div>
+
+                                  {/* Tytuł i Przedmiot */}
+                                  <div className="flex flex-col flex-1 min-w-0 justify-center">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[11px] font-bold uppercase tracking-wider truncate" style={{ color: subjectColor }}>
+                                        {exam?.subject || "Unknown"}
+                                      </span>
+                                      {topic.locked && (
+                                        <svg className="w-3 h-3 text-orange-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                                      )}
+                                    </div>
+                                    <span className={`text-sm font-medium truncate mt-0.5 ${isDone ? 'line-through text-gray-500' : 'text-gray-200'}`}>
+                                      {topic.name}
                                     </span>
                                   </div>
 
-                                  {/* PRAWA STRONA (MENU) */}
-                                  <div 
-                                    className="flex items-center justify-between flex-1 p-4 pl-0 cursor-pointer"
-                                    onClick={(e) => handleContextMenu(e, topic, 'topic')}
-                                  >
-                                    <div className={`text-sm font-medium pr-2 ${isDone ? 'line-through text-gray-500' : 'text-gray-200'}`}>
-                                      {topic.name}
-                                    </div>
-                                    
-                                    <div className="flex items-center gap-2 shrink-0">
-                                      {topic.locked && (
-                                        <svg className="w-4 h-4 text-orange-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
-                                      )}
-                                      {topic.note && (
-                                        <span onClick={(e) => openNoteEditor(e, topic, 'topic')} className="text-xs text-gray-400 bg-black/30 px-2 py-1 rounded-md">
-                                          ✎ Note
-                                        </span>
-                                      )}
-                                      <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z"></path></svg>
-                                    </div>
-                                  </div>
+                                  {/* Ikona notatki */}
+                                  {topic.note && (
+                                    <span 
+                                      onClick={(e) => { e.stopPropagation(); openNoteEditor(e, topic, 'topic'); }} 
+                                      className="shrink-0 text-[10px] text-gray-400 bg-black/30 px-2 py-1 rounded-md"
+                                    >
+                                      ✎ Note
+                                    </span>
+                                  )}
                                 </div>
                               );
                             })}
-                          </div>
+                          </>
                         )}
                       </div>
-                    )}
+                    </div>
                   </div>
                 );
               })}
@@ -381,14 +361,14 @@ export default function PlanView({ onBack }) {
                 return (
                   <div key={`desk_${plan.id}`} className="flex group">
                     
-                    {/* LEWA KOLUMNA: Oś czasu i data */}
-                    <div className="w-48 shrink-0 border-r-2 border-gray-700 relative py-4 pr-6 text-right">
+                    {/* LEWA KOLUMNA: Oś czasu i data (Poszerzona do w-40, dodano break-words) */}
+                    <div className="w-40 shrink-0 border-r-2 border-gray-700 relative py-4 pr-6 text-right break-words">
                       <div className={`absolute right-[-9px] top-6 w-4 h-4 rounded-full border-4 transition-colors ${plan.isToday ? 'bg-[#3498db] border-[#3498db]' : 'bg-[#1c1c1e] border-gray-600 group-hover:border-gray-400'}`}></div>
                       
-                      <div className={`text-lg font-bold ${plan.isToday ? 'text-[#3498db]' : 'text-gray-200'}`}>
+                      <div className={`text-lg font-bold leading-tight ${plan.isToday ? 'text-[#3498db]' : 'text-gray-200'}`}>
                         {plan.date}
                       </div>
-                      <div className={`text-sm font-medium mt-1 ${plan.isToday ? 'text-[#3498db]' : 'text-gray-500'}`}>
+                      <div className={`text-sm font-medium mt-1 leading-tight ${plan.isToday ? 'text-[#3498db]' : 'text-gray-500'}`}>
                         {getDaysStatus(plan.date)}
                       </div>
                     </div>
@@ -451,21 +431,21 @@ export default function PlanView({ onBack }) {
                                     {isDone && <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"></path></svg>}
                                   </div>
                                   
-                                  <div className="w-32 font-bold truncate text-sm" style={{ color: subjectColor }}>
+                                  <div className="w-48 lg:w-64 font-bold truncate text-sm" style={{ color: subjectColor }}>
                                     {exam?.subject || "Unknown"}
                                   </div>
                                 </div>
 
                                 {/* PRAWA STRONA (MENU) */}
                                 <div 
-                                  className="flex items-center justify-between flex-1 py-2.5 pr-3 cursor-pointer"
+                                  className="flex items-center justify-between flex-1 py-2.5 pr-3 cursor-pointer min-w-0"
                                   onClick={(e) => handleContextMenu(e, topic, 'topic')}
                                 >
                                   <div className={`text-sm font-medium truncate ${isDone ? 'line-through text-gray-500' : 'text-gray-200'}`}>
                                     {topic.name}
                                   </div>
 
-                                  <div className="flex items-center gap-2 pl-4">
+                                  <div className="flex items-center gap-2 pl-4 shrink-0">
                                     {topic.locked && (
                                       <svg className="w-4 h-4 text-orange-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
                                     )}

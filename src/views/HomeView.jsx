@@ -43,13 +43,14 @@ const getDaysUntil = (targetDate) => {
 
 export default function HomeView() {
   const [activeTab, setActiveTab] = useState("Dashboard")
+  const [targetTodoList, setTargetTodoList] = useState('all') // <--- NOWY STAN
   const [currentTime, setCurrentTime] = useState(new Date())
 
   const { 
     isLoading, dailyTasks, topics, exams, globalStats,
     subjects, scheduleEntries, cancellations, customEvents, 
     eventLists, semesters, gradeModules, grades,
-    taskLists, subscriptions 
+    taskLists, subscriptions, settings
   } = useData()
 
   const [todayProgress, setTodayProgress] = useState({ done: 0, total: 0 })
@@ -287,12 +288,17 @@ export default function HomeView() {
   // Widget: Shopping List
   const shoppingItemsList = useMemo(() => {
     if (!dailyTasks || !taskLists) return [];
-    const shoppingListIDs = new Set(taskLists.filter(l => l.list_type === 'shopping').map(l => l.id));
     
+    const mainListId = settings?.main_shopping_list_id;
+    if (!mainListId) return [];
+
+    const mainList = taskLists.find(l => l.id === mainListId && l.list_type === 'shopping');
+    if (!mainList) return [];
+
     return dailyTasks
-      .filter(t => shoppingListIDs.has(t.list_id) && t.status === 'todo')
-      .map(t => ({ id: t.id, name: t.content, listName: taskLists.find(l => l.id === t.list_id)?.name || 'Shopping' }));
-  }, [dailyTasks, taskLists]);
+      .filter(t => t.list_id === mainListId && t.status === 'todo')
+      .map(t => ({ id: t.id, name: t.content, listName: mainList.name }));
+  }, [dailyTasks, taskLists, settings]);
 
   // Widget: Upcoming Subscription
   const nextSubscription = useMemo(() => {
@@ -327,6 +333,72 @@ export default function HomeView() {
     return { ...target, daysLeft: days, subjColor: subj?.color || '#8e44ad' };
   }, [subscriptions, subjects]);
 
+  // --- LOGIKA ODZNAK W MENU BOCZNYM ---
+  const renderMenuBadge = (tabName) => {
+    const mode = settings?.badge_mode || 'default';
+    if (mode === 'off') return null;
+
+    const todayStr = new Date(currentTime.getTime() - (currentTime.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
+    if (tabName === 'Todo') {
+      const shoppingListIDs = new Set((taskLists || []).filter(l => l.list_type === 'shopping').map(l => l.id));
+      const allTodo = dailyTasks.filter(t => !shoppingListIDs.has(t.list_id));
+      
+      const overdue = allTodo.filter(t => t.status === 'todo' && t.date && t.date < todayStr).length;
+      const todayPending = allTodo.filter(t => t.status === 'todo' && t.date === todayStr).length;
+      const todayDone = allTodo.filter(t => t.status === 'done' && t.date === todayStr).length;
+      const totalToday = todayPending + todayDone;
+
+      if (totalToday === 0 && overdue === 0) return null;
+
+      if (mode === 'dot') {
+        if (overdue > 0) return <div className="w-2 h-2 rounded-full bg-red-500"></div>;
+        if (todayPending === 0 && totalToday > 0) return <div className="w-2 h-2 rounded-full bg-green-500"></div>;
+        return <div className="w-2 h-2 rounded-full bg-orange-400"></div>;
+      }
+
+      if (overdue > 0) {
+        return <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-red-500/20 text-red-500">{todayPending + overdue}</span>;
+      }
+      if (todayPending === 0 && totalToday > 0) {
+        return (
+          <span className="text-green-500">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"></path></svg>
+          </span>
+        );
+      }
+      return <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-orange-500/20 text-orange-400">{todayPending}</span>;
+    }
+
+    if (tabName === 'Plan') {
+      const overdue = topics.filter(t => t.status === 'todo' && t.scheduled_date && t.scheduled_date < todayStr).length;
+      const todayPending = topics.filter(t => t.status === 'todo' && t.scheduled_date === todayStr).length;
+      const todayDone = topics.filter(t => t.status === 'done' && t.scheduled_date === todayStr).length;
+      const totalToday = todayPending + todayDone;
+
+      if (totalToday === 0 && overdue === 0) return null;
+
+      if (mode === 'dot') {
+        if (overdue > 0) return <div className="w-2 h-2 rounded-full bg-red-500"></div>;
+        if (todayPending === 0 && totalToday > 0) return <div className="w-2 h-2 rounded-full bg-green-500"></div>;
+        return <div className="w-2 h-2 rounded-full bg-orange-400"></div>;
+      }
+
+      if (overdue > 0) {
+        return <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-red-500/20 text-red-500">{todayPending + overdue}</span>;
+      }
+      if (todayPending === 0 && totalToday > 0) {
+        return (
+          <span className="text-green-500">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"></path></svg>
+          </span>
+        );
+      }
+      return <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-orange-500/20 text-orange-400">{todayPending}</span>;
+    }
+
+    return null;
+  };
 
   // --- FORMATERY ZEGARA / WIDGETÓW ---
   const getNowNextState = () => {
@@ -562,7 +634,12 @@ export default function HomeView() {
 
           {/* 3. TASKS FOR TODAY WIDGET */}
           <div 
-            onClick={() => { if(todayTasksList.length > 0) setActiveTab('Todo') }}
+            onClick={() => { 
+              if(todayTasksList.length > 0) {
+                setTargetTodoList('all'); 
+                setActiveTab('Todo');
+              }
+            }}
             className={`bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] max-h-[180px] ${todayTasksList.length > 0 ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''}`}
           >
             <div className="flex items-center justify-between mb-3">
@@ -598,8 +675,11 @@ export default function HomeView() {
 
           {/* 4. SHOPPING LIST WIDGET */}
           <div 
-            onClick={() => { if(shoppingItemsList.length > 0) setActiveTab('Todo') }}
-            className={`bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] max-h-[180px] ${shoppingItemsList.length > 0 ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''}`}
+            onClick={() => { 
+              setTargetTodoList(settings?.main_shopping_list_id || 'all'); 
+              setActiveTab('Todo');
+            }} 
+            className="bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] max-h-[180px] cursor-pointer hover:bg-white/5 transition-colors"
           >
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Shopping List</span>
@@ -609,6 +689,11 @@ export default function HomeView() {
             <div className="flex-1 overflow-hidden flex flex-col gap-2">
               {isLoading ? (
                 <div className="flex-1 flex items-center justify-center text-gray-400 font-medium">Loading...</div>
+              ) : !settings?.main_shopping_list_id ? ( 
+                <div className="flex-1 flex flex-col items-center justify-center text-gray-500 text-center">
+                  <span className="text-2xl mb-1 opacity-50">🛒</span>
+                  <span className="text-xs font-medium">Set main list in Settings</span>
+                </div>
               ) : shoppingItemsList.length > 0 ? (
                 <>
                   {shoppingItemsList.slice(0, 4).map(item => (
@@ -732,10 +817,15 @@ export default function HomeView() {
           {[...mainTabs, ...moreTabs].filter(t => t !== "Dashboard").map((item) => (
             <button 
               key={item}
-              onClick={() => setActiveTab(item)}
-              className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium transition-colors ${activeTab === item ? 'bg-[#3498db] text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white'}`}
+              onClick={() => {
+                if (item === "Todo") setTargetTodoList('all');
+                setActiveTab(item);
+              }}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium transition-colors ${activeTab === item ? 'bg-[#3498db] text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white'}`}
             >
-              {item}
+              <span>{item}</span>
+              {/* RENDEROWANIE ODZNAKI */}
+              {renderMenuBadge(item)}
             </button>
           ))}
         </nav>
@@ -753,7 +843,7 @@ export default function HomeView() {
         ) : activeTab === "Plan" ? (
           <PlanView onBack={() => setActiveTab("Dashboard")} />
         ) : activeTab === "Todo" ? (
-          <TodoView onBack={() => setActiveTab("Dashboard")} />
+          <TodoView onBack={() => setActiveTab("Dashboard")} initialListId={targetTodoList} />
         ) : activeTab === "Subjects & Semesters" ? (
           <SubjectsView onBack={() => setActiveTab("More")} />
         ) : activeTab === "Grades" ? (
@@ -776,7 +866,6 @@ export default function HomeView() {
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                 </button>
                 
-                {/* ZMIANA: LOGOUT warunkowo ukrywany na urządzeniach mobilnych jeśli PWA */}
                 <button 
                   onClick={() => supabase.auth.signOut()} 
                   className={`${isStandalone ? 'hidden md:block' : 'block'} p-2.5 text-gray-400 hover:text-red-400 bg-[#1c1c1e] hover:bg-red-500/10 rounded-full transition-colors border border-gray-800`}
@@ -821,7 +910,10 @@ export default function HomeView() {
               return (
                 <button 
                   key={tab}
-                  onClick={() => setActiveTab(tab)}
+                  onClick={() => {
+                    if (tab === "Todo") setTargetTodoList('all');
+                    setActiveTab(tab);
+                  }}
                   className="flex flex-col items-center justify-center w-full h-full gap-1"
                 >
                   {getTabIcon(tab, isSelected)}
