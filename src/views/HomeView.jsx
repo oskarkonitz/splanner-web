@@ -61,6 +61,10 @@ export default function HomeView() {
   const [gpa, setGpa] = useState(0.0)
 
   const [isStandalone, setIsStandalone] = useState(false);
+  
+  // --- STANY DLA POWIADOMIENIA WINDOWS ---
+  const [showWindowsToast, setShowWindowsToast] = useState(false);
+  const [isWindows, setIsWindows] = useState(false);
 
   const mainTabs = ["Dashboard", "Plan", "Todo", "Schedule"];
   const moreTabs = ["Exam Database & Archive", "Achievements", "Subjects & Semesters", "Grades", "Subscriptions"];
@@ -70,6 +74,28 @@ export default function HomeView() {
     const isPWA = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
     setIsStandalone(!!isPWA);
   }, []);
+
+  // --- WYKRYWANIE WINDOWS & LOGIKA TOASTA ---
+  useEffect(() => {
+    const checkIsWindows = /Win/i.test(navigator.userAgent);
+    setIsWindows(checkIsWindows);
+
+    if (checkIsWindows) {
+      const isHidden = localStorage.getItem('hideSPlannerWindowsToast');
+      if (!isHidden) {
+        // Opóźnienie 3.5 sekundy przed pokazaniem toasta
+        const timer = setTimeout(() => {
+          setShowWindowsToast(true);
+        }, 3500);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, []);
+
+  const closeWindowsToast = () => {
+    setShowWindowsToast(false);
+    localStorage.setItem('hideSPlannerWindowsToast', 'true');
+  };
 
   // --- ZEGAR ---
   useEffect(() => {
@@ -773,7 +799,7 @@ export default function HomeView() {
   }
 
   return (
-    <div className="flex h-screen w-full bg-[#2b2b2b] text-white overflow-hidden">
+    <div className="flex h-screen w-full bg-[#2b2b2b] text-white overflow-hidden relative">
       
       {/* PASEK BOCZNY Z MARGINESEM U GÓRY DLA NOTCHA */}
       <aside className="hidden md:flex flex-col w-72 bg-[#1c1c1e] border-r border-gray-800 px-6 pb-6 pt-[calc(env(safe-area-inset-top)+1.5rem)] overflow-y-auto">
@@ -901,6 +927,35 @@ export default function HomeView() {
 
           </main>
         )}
+
+        {/* TOAST DLA WINDOWS */}
+        <div 
+          className={`fixed bottom-24 md:bottom-10 right-6 z-50 bg-[#1c1c1e] border border-gray-700 rounded-2xl shadow-2xl p-5 w-72 md:w-80 transform transition-all duration-500 ease-in-out ${showWindowsToast ? 'translate-x-0 opacity-100' : 'translate-x-[150%] opacity-0'}`}
+        >
+          <button 
+            onClick={closeWindowsToast}
+            className="absolute top-3 right-3 text-gray-500 hover:text-white transition-colors p-1"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+          </button>
+          <div className="flex items-start gap-4">
+            <div className="bg-[#3498db]/20 p-2.5 rounded-xl text-[#3498db] shrink-0 mt-0.5">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+            </div>
+            <div>
+              <h4 className="text-white font-bold text-sm mb-1">Splanner for Windows</h4>
+              <p className="text-gray-400 text-[11px] leading-relaxed mb-3 pr-2">Install the dedicated desktop app for better performance and more features.</p>
+              <a 
+                href="https://github.com/oskarkonitz/SPlanner/releases/latest/download/SPlanner_Installer.exe"
+                onClick={closeWindowsToast}
+                className="inline-flex items-center gap-2 bg-[#3498db] hover:bg-[#2980b9] text-white text-xs font-bold py-2 px-4 rounded-lg transition-colors"
+              >
+                <span>Download now</span>
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+              </a>
+            </div>
+          </div>
+        </div>
 
         {/* DOLNY PASEK NAWIGACJI */}
         <nav className="md:hidden absolute bottom-0 w-full bg-[#1c1c1e]/90 backdrop-blur-md border-t border-gray-800">

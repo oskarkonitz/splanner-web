@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../api/supabase'
 import { useData } from '../context/DataContext'
 
@@ -6,6 +6,15 @@ export default function SettingsView({ onBack }) {
   const { session, taskLists, settings, updateSetting } = useData()
   
   const [activeModal, setActiveModal] = useState(null)
+  
+  // Stan wykrywający system operacyjny
+  const [isWindows, setIsWindows] = useState(false)
+
+  // Sprawdzanie systemu po załadowaniu komponentu
+  useEffect(() => {
+    const checkIsWindows = /Win/i.test(navigator.userAgent);
+    setIsWindows(checkIsWindows);
+  }, []);
 
   const shoppingLists = useMemo(() => {
     return taskLists.filter(list => list.list_type === 'shopping');
@@ -35,25 +44,38 @@ export default function SettingsView({ onBack }) {
     </div>
   )
 
-  const Row = ({ icon, title, value, onClick, isDestructive, hasArrow }) => (
-    <button 
-      onClick={onClick}
-      className={`w-full flex items-center justify-between p-4 bg-transparent active:bg-white/5 transition-colors text-left
-        ${isDestructive ? 'text-red-500' : 'text-white'}
-        border-b border-gray-800 last:border-b-0`}
-    >
-      <div className="flex items-center gap-3">
-        {icon}
-        <span className="font-medium">{title}</span>
-      </div>
-      <div className="flex items-center gap-2 text-gray-500">
-        {value && <span className="text-sm">{value}</span>}
-        {hasArrow && (
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
-        )}
-      </div>
-    </button>
-  )
+  const Row = ({ icon, title, value, onClick, isDestructive, hasArrow, asLink, href }) => {
+    const content = (
+      <>
+        <div className="flex items-center gap-3">
+          {icon}
+          <span className="font-medium">{title}</span>
+        </div>
+        <div className="flex items-center gap-2 text-gray-500">
+          {value && <span className="text-sm">{value}</span>}
+          {hasArrow && (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
+          )}
+        </div>
+      </>
+    );
+
+    const commonClasses = `w-full flex items-center justify-between p-4 bg-transparent active:bg-white/5 transition-colors text-left border-b border-gray-800 last:border-b-0 ${isDestructive ? 'text-red-500' : 'text-white'}`;
+
+    if (asLink) {
+      return (
+        <a href={href} className={commonClasses} style={{ textDecoration: 'none' }}>
+          {content}
+        </a>
+      );
+    }
+
+    return (
+      <button onClick={onClick} className={commonClasses}>
+        {content}
+      </button>
+    );
+  }
 
   const handleSelectShoppingList = async (listId) => {
     await updateSetting('main_shopping_list_id', listId);
@@ -99,6 +121,19 @@ export default function SettingsView({ onBack }) {
             onClick={() => setActiveModal('badgeMode')} 
           />
         </Section>
+
+        {/* Nowa sekcja renderowana tylko dla systemu Windows */}
+        {isWindows && (
+          <Section title="App & Integration">
+            <Row 
+              title="Download for Windows" 
+              icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>}
+              hasArrow 
+              asLink
+              href="https://github.com/oskarkonitz/SPlanner/releases/latest/download/SPlanner_Installer.exe"
+            />
+          </Section>
+        )}
 
         <Section title="Account">
           <div className="flex items-center gap-3 p-4 border-b border-gray-800">
