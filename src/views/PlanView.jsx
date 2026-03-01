@@ -176,9 +176,6 @@ export default function PlanView({ onBack }) {
       {/* HEADER */}
       <header className="flex flex-wrap items-center justify-between p-4 px-6 pt-[calc(env(safe-area-inset-top)+1rem)] border-b border-gray-800 bg-[#1c1c1e] shrink-0 sticky top-0 z-30 shadow-md md:shadow-none">
         <div className="flex items-center gap-3">
-          <button onClick={onBack} className="md:hidden p-2 -ml-2 text-[#3498db]">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"></path></svg>
-          </button>
           <h1 className="text-2xl font-bold">Study Plan</h1>
         </div>
 
@@ -271,13 +268,13 @@ export default function PlanView({ onBack }) {
                       <div className="flex items-center gap-3">
                         <div className={`flex gap-2 ${isExpanded ? 'hidden' : 'flex'}`}>
                           {plan.topics.length > 0 && (
-                            <span className="bg-blue-500/15 text-[#3498db] px-2.5 py-1 rounded-md text-xs font-bold">
+                            <span className="bg-blue-500/15 text-[#3498db] px-2.5 py-1 rounded-md text-xs font-bold truncate max-w-[100px]">
                               {plan.topics.length} topics
                             </span>
                           )}
                           {plan.exams.length > 0 && (
-                            <span className="flex items-center gap-1 bg-red-500/15 text-red-500 px-2.5 py-1 rounded-md text-xs font-bold">
-                              Exam
+                            <span className="flex items-center gap-1 bg-red-500/15 text-red-500 px-2.5 py-1 rounded-md text-xs font-bold truncate max-w-[120px]">
+                              {plan.exams[0].title}{plan.exams.length > 1 ? ', ...' : ''}
                             </span>
                           )}
                         </div>

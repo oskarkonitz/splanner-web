@@ -1,4 +1,4 @@
-import { useState, useEffect, act } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../api/supabase'
 import { useData } from '../context/DataContext'
 import SettingsView from './SettingsView'
@@ -11,15 +11,45 @@ import GradesView from './GradesView'
 import SubscriptionsView from './SubscriptionsView'
 import AchievementsView from './AchievementsView'
 
+// --- FUNKCJE POMOCNICZE DLA SUBSKRYPCJI ---
+const getNextBillingDate = (billingDateStr, cycle) => {
+  if (!billingDateStr) return null;
+  const d = new Date(billingDateStr);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (d >= today) return d;
+
+  if (cycle === 'monthly') {
+    while (d < today) d.setMonth(d.getMonth() + 1);
+  } else if (cycle === 'yearly') {
+    while (d < today) d.setFullYear(d.getFullYear() + 1);
+  } else if (cycle === 'weekly') {
+    while (d < today) d.setDate(d.getDate() + 7);
+  }
+  return d;
+};
+
+const getDaysUntil = (targetDate) => {
+  if (!targetDate) return null;
+  const target = new Date(targetDate);
+  const today = new Date();
+  target.setHours(0,0,0,0);
+  today.setHours(0,0,0,0);
+  const diffTime = target - today;
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+};
+
+
 export default function HomeView() {
   const [activeTab, setActiveTab] = useState("Dashboard")
-
   const [currentTime, setCurrentTime] = useState(new Date())
 
   const { 
     isLoading, dailyTasks, topics, exams, globalStats,
     subjects, scheduleEntries, cancellations, customEvents, 
-    eventLists, semesters, gradeModules, grades 
+    eventLists, semesters, gradeModules, grades,
+    taskLists, subscriptions 
   } = useData()
 
   const [todayProgress, setTodayProgress] = useState({ done: 0, total: 0 })
@@ -29,14 +59,24 @@ export default function HomeView() {
   const [focusTime, setFocusTime] = useState(0)
   const [gpa, setGpa] = useState(0.0)
 
+  const [isStandalone, setIsStandalone] = useState(false);
+
   const mainTabs = ["Dashboard", "Plan", "Todo", "Schedule"];
   const moreTabs = ["Exam Database & Archive", "Achievements", "Subjects & Semesters", "Grades", "Subscriptions"];
 
+  // --- WYKRYWANIE TRYBU APLIKACJI (PWA) ---
+  useEffect(() => {
+    const isPWA = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    setIsStandalone(!!isPWA);
+  }, []);
+
+  // --- ZEGAR ---
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
     return () => clearInterval(timer)
   }, [])
 
+  // --- GŁÓWNA LOGIKA KALKULACYJNA ---
   useEffect(() => {
     if (isLoading || !dailyTasks) return;
 
@@ -44,13 +84,15 @@ export default function HomeView() {
     const todayStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
     const currentTimeStr = now.toTimeString().substring(0, 5);
 
+    // 1. Czas Skupienia
     const timeStat = globalStats?.find(s => s.key === 'daily_study_time');
     if (timeStat) {
       const safeStringValue = String(timeStat.value).replace(/"/g, '');
       setFocusTime(parseInt(safeStringValue) || 0);
     }
 
-    const todayTasks = dailyTasks?.filter(t => t.date === todayStr) || [];
+    // 2. Postęp Dzisiejszy i Całkowity
+    const todayTasks = dailyTasks?.filter(t => t.date === todayStr && t.list_id !== 'shopping') || [];
     const todayTopics = topics?.filter(t => t.scheduled_date === todayStr) || [];
     setTodayProgress({
       done: todayTasks.filter(t => t.status === 'done').length + todayTopics.filter(t => t.status === 'done').length,
@@ -73,6 +115,7 @@ export default function HomeView() {
       total: relevantTopics.length + relevantTasks.length
     });
 
+    // 3. Najbliższy Egzamin
     const upcomingExams = (exams || [])
       .filter(e => e.date >= todayStr)
       .sort((a, b) => {
@@ -81,6 +124,7 @@ export default function HomeView() {
       });
     setNextExam(upcomingExams.length > 0 ? upcomingExams[0] : null);
 
+    // 4. Now / Next (Zajęcia/Wydarzenia)
     let foundNext = null;
     const selectedSemesterID = "ALL";
 
@@ -165,6 +209,7 @@ export default function HomeView() {
     }
     setNowNextItem(foundNext);
 
+    // 5. Kalkulator GPA
     const convertToGradeScale = (val) => {
       if (val <= 5.0) return val;
       if (val >= 90) return 5.0;
@@ -216,6 +261,74 @@ export default function HomeView() {
 
   }, [isLoading, dailyTasks, topics, exams, globalStats, subjects, scheduleEntries, cancellations, customEvents, eventLists, semesters, gradeModules, grades]);
 
+  // --- DANE DLA NOWYCH WIDGETÓW ---
+  
+  // Widget: Tasks for Today
+  const todayTasksList = useMemo(() => {
+    if (!dailyTasks || !topics) return [];
+    const todayStr = new Date(currentTime.getTime() - (currentTime.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    
+    const shoppingListIDs = new Set((taskLists || []).filter(l => l.list_type === 'shopping').map(l => l.id));
+    
+    const tTasks = dailyTasks.filter(t => t.date === todayStr && t.status === 'todo' && !shoppingListIDs.has(t.list_id));
+    const tTopics = topics.filter(t => t.scheduled_date === todayStr && t.status === 'todo');
+
+    const combined = [
+      ...tTasks.map(t => ({ id: t.id, title: t.content, color: t.color || '#3498db', type: 'task' })),
+      ...tTopics.map(t => {
+        const ex = exams?.find(e => e.id === t.exam_id);
+        const subj = subjects?.find(s => s.id === ex?.subject_id);
+        return { id: t.id, title: t.name, color: subj?.color || '#9b59b6', type: 'topic' };
+      })
+    ];
+    return combined;
+  }, [dailyTasks, topics, taskLists, exams, subjects, currentTime]);
+
+  // Widget: Shopping List
+  const shoppingItemsList = useMemo(() => {
+    if (!dailyTasks || !taskLists) return [];
+    const shoppingListIDs = new Set(taskLists.filter(l => l.list_type === 'shopping').map(l => l.id));
+    
+    return dailyTasks
+      .filter(t => shoppingListIDs.has(t.list_id) && t.status === 'todo')
+      .map(t => ({ id: t.id, name: t.content, listName: taskLists.find(l => l.id === t.list_id)?.name || 'Shopping' }));
+  }, [dailyTasks, taskLists]);
+
+  // Widget: Upcoming Subscription
+  const nextSubscription = useMemo(() => {
+    if (!subscriptions || subscriptions.length === 0) return null;
+    const today = new Date();
+    today.setHours(0,0,0,0);
+
+    let upcoming = [];
+    subscriptions.forEach(sub => {
+      if (!sub.is_active) return;
+      let isExp = false;
+      if (sub.expiry_date) {
+        const exp = new Date(sub.expiry_date);
+        exp.setHours(0,0,0,0);
+        if (exp < today) isExp = true;
+      }
+      if (isExp) return;
+
+      const nDate = getNextBillingDate(sub.billing_date, sub.billing_cycle);
+      if (nDate) {
+        upcoming.push({ ...sub, nextDate: nDate });
+      }
+    });
+
+    if (upcoming.length === 0) return null;
+    upcoming.sort((a, b) => a.nextDate - b.nextDate);
+    
+    const target = upcoming[0];
+    const days = getDaysUntil(target.nextDate);
+    const subj = subjects?.find(s => s.id === target.subject_id);
+    
+    return { ...target, daysLeft: days, subjColor: subj?.color || '#8e44ad' };
+  }, [subscriptions, subjects]);
+
+
+  // --- FORMATERY ZEGARA / WIDGETÓW ---
   const getNowNextState = () => {
     if (!nowNextItem) return { isNow: false, isStartingSoon: false, progress: 0, isToday: false, countdownStr: "" };
     
@@ -257,6 +370,38 @@ export default function HomeView() {
     return { isNow, isStartingSoon, progress, isToday, countdownStr };
   }
 
+  const getNextExamState = () => {
+    if (!nextExam) return { countdownStr: "No upcoming exams", hexColor: "#e74c3c" };
+
+    const todayStr = new Date(currentTime.getTime() - (currentTime.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    const isToday = nextExam.date === todayStr;
+    const subj = subjects?.find(s => s.id === nextExam.subject_id);
+    const hexColor = subj?.color || "#e74c3c";
+
+    let countdownStr = "";
+
+    if (isToday) {
+      const currentMins = currentTime.getHours() * 60 + currentTime.getMinutes();
+      const startMins = parseInt((nextExam.time || "08:00").split(':')[0]) * 60 + parseInt((nextExam.time || "08:00").split(':')[1]);
+      
+      if (currentMins < startMins) {
+        const diff = startMins - currentMins;
+        const h = Math.floor(diff / 60);
+        const m = Math.floor(diff % 60);
+        countdownStr = h > 0 ? `Starts in ${h}h ${m}m` : `Starts in ${m}m`;
+      } else if (currentMins >= startMins && currentMins <= startMins + 90) { // zakładamy 1.5h
+        countdownStr = "In Progress";
+      } else {
+        countdownStr = "Finished";
+      }
+    } else {
+      const days = getDaysUntil(nextExam.date);
+      countdownStr = days === 1 ? "Tomorrow" : `In ${days} days`;
+    }
+
+    return { countdownStr, hexColor };
+  }
+
   const formatTime = (seconds) => {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
@@ -282,6 +427,7 @@ export default function HomeView() {
 
   const renderDashboardWidgets = () => {
     const { isNow, isStartingSoon, progress, isToday, countdownStr } = getNowNextState();
+    const examState = getNextExamState();
     
     return (
       <div className="flex flex-col gap-6">
@@ -295,6 +441,7 @@ export default function HomeView() {
           }
         `}</style>
 
+        {/* WIDGETY PROGRESU (MOBILE) */}
         <div className="grid grid-cols-2 gap-4 md:hidden">
           <div className="bg-[#1c1c1e] p-5 rounded-3xl shadow-lg border border-white/5 flex flex-col items-center justify-center gap-2">
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Today</span>
@@ -312,10 +459,15 @@ export default function HomeView() {
           </div>
         </div>
 
+        {/* GŁÓWNA SIATKA WIDGETÓW */}
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
           
+          {/* 1. NOW / NEXT WIDGET */}
           {nowNextItem ? (
-            <div className="relative bg-[#1c1c1e] rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px]">
+            <div 
+              onClick={() => setActiveTab("Schedule")} 
+              className="relative bg-[#1c1c1e] rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] cursor-pointer hover:bg-white/5 transition-colors"
+            >
               {isStartingSoon && (
                 <>
                   <div className="absolute inset-0 rounded-3xl border-2 pointer-events-none" style={{ borderColor: nowNextItem.hexColor }}></div>
@@ -357,14 +509,17 @@ export default function HomeView() {
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                     <span>{isToday ? "Today" : nowNextItem.dateStr} • {nowNextItem.startTime} - {nowNextItem.endTime === "23:59" ? "End of day" : nowNextItem.endTime}</span>
                   </div>
-                  <span className="text-gray-500 text-sm mt-1">
+                  <span className="text-gray-500 text-sm mt-1 truncate">
                     {nowNextItem.typeStr} {nowNextItem.subtitle ? `• ${nowNextItem.subtitle}` : ""}
                   </span>
                 </div>
               </div>
             </div>
           ) : (
-            <div className="bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col gap-4 min-h-[140px]">
+            <div 
+              onClick={() => setActiveTab("Schedule")} 
+              className="bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col gap-4 min-h-[140px] cursor-pointer hover:bg-white/5 transition-colors"
+            >
               <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Now / Next</span>
               <div className="flex-1 flex items-center justify-center text-green-400 font-semibold text-lg">
                 {isLoading ? "Loading..." : "No events ahead"}
@@ -372,33 +527,158 @@ export default function HomeView() {
             </div>
           )}
 
-          <div className="bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col gap-4 min-h-[140px]">
-            <div className="flex items-center gap-2 text-orange-400">
-              <span className="text-sm font-bold uppercase tracking-wider">Next Exam</span>
+          {/* 2. NEXT EXAM WIDGET */}
+          <div 
+            onClick={() => setActiveTab("Plan")} 
+            className="bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] cursor-pointer hover:bg-white/5 transition-colors"
+          >
+            <div className="flex justify-between items-center mb-4">
+              <span className="text-xs font-bold uppercase tracking-wider" style={{ color: examState.hexColor }}>Next Exam</span>
+              {nextExam && (
+                <span className="text-xs px-2 py-1 rounded-md font-medium" style={{ backgroundColor: `${examState.hexColor}20`, color: examState.hexColor }}>
+                  {examState.countdownStr}
+                </span>
+              )}
             </div>
-            <div className="flex-1 flex items-center justify-center text-gray-400 font-medium text-center">
-              {isLoading ? "Loading..." : (
+            
+            <div className="flex-1 flex items-center justify-center text-center">
+              {isLoading ? (
+                <span className="text-gray-400 font-medium">Loading...</span>
+              ) : (
                 nextExam ? (
-                  <div className="flex flex-col items-center gap-1">
-                    <span className="text-white text-lg font-bold">{nextExam.title}</span>
-                    <span className="text-orange-400 text-sm">{nextExam.date} o {nextExam.time?.substring(0, 5) || "TBA"}</span>
+                  <div className="flex flex-col items-center justify-center w-full">
+                    <span className="text-xl font-bold text-white w-full truncate px-2">{nextExam.title}</span>
+                    <div className="flex items-center justify-center gap-2 text-gray-400 text-sm mt-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                      <span>{nextExam.date} • {nextExam.time?.substring(0, 5) || "TBA"}</span>
+                    </div>
                   </div>
-                ) : "No upcoming exams"
+                ) : (
+                  <span className="text-gray-400 font-medium">No upcoming exams</span>
+                )
               )}
             </div>
           </div>
 
-          <div className="bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col justify-between min-h-[140px]">
-            <span className="text-sm font-semibold text-gray-400">Today's Focus</span>
-            <div className="text-5xl font-bold text-indigo-400 mt-2">
-              {isLoading ? "--:--" : formatTime(focusTime)}
+          {/* 3. TASKS FOR TODAY WIDGET */}
+          <div 
+            onClick={() => { if(todayTasksList.length > 0) setActiveTab('Todo') }}
+            className={`bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] max-h-[180px] ${todayTasksList.length > 0 ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''}`}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Tasks for Today</span>
+              {todayTasksList.length > 0 && <span className="text-xs bg-blue-500/20 text-[#3498db] px-2 py-0.5 rounded-full font-bold">{todayTasksList.length}</span>}
+            </div>
+            
+            <div className="flex-1 overflow-hidden flex flex-col gap-2">
+              {isLoading ? (
+                <div className="flex-1 flex items-center justify-center text-gray-400 font-medium">Loading...</div>
+              ) : todayTasksList.length > 0 ? (
+                <>
+                  {todayTasksList.slice(0, 4).map(t => (
+                    <div key={t.id} className="flex items-center gap-2 text-sm truncate">
+                      <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: t.color }}></div>
+                      <span className="text-gray-200 truncate">{t.title}</span>
+                    </div>
+                  ))}
+                  {todayTasksList.length > 4 && (
+                    <div className="text-xs text-gray-500 font-medium mt-1 ml-3">
+                      +{todayTasksList.length - 4} more items...
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center text-gray-500">
+                  <svg className="w-8 h-8 mb-1 text-green-500/50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                  <span className="text-sm font-medium">All done for today!</span>
+                </div>
+              )}
             </div>
           </div>
 
+          {/* 4. SHOPPING LIST WIDGET */}
+          <div 
+            onClick={() => { if(shoppingItemsList.length > 0) setActiveTab('Todo') }}
+            className={`bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] max-h-[180px] ${shoppingItemsList.length > 0 ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''}`}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Shopping List</span>
+              {shoppingItemsList.length > 0 && <span className="text-xs bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded-full font-bold">{shoppingItemsList.length}</span>}
+            </div>
+            
+            <div className="flex-1 overflow-hidden flex flex-col gap-2">
+              {isLoading ? (
+                <div className="flex-1 flex items-center justify-center text-gray-400 font-medium">Loading...</div>
+              ) : shoppingItemsList.length > 0 ? (
+                <>
+                  {shoppingItemsList.slice(0, 4).map(item => (
+                    <div key={item.id} className="flex items-center gap-2 text-sm truncate">
+                      <span className="text-orange-400 shrink-0 text-xs">•</span>
+                      <span className="text-gray-200 truncate">{item.name}</span>
+                    </div>
+                  ))}
+                  {shoppingItemsList.length > 4 && (
+                    <div className="text-xs text-gray-500 font-medium mt-1 ml-3">
+                      +{shoppingItemsList.length - 4} more items...
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center text-gray-500">
+                  <span className="text-2xl mb-1 opacity-50">🛒</span>
+                  <span className="text-sm font-medium">Cart is empty</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 5. NEXT SUBSCRIPTION WIDGET */}
+          <div 
+            onClick={() => { if(nextSubscription) setActiveTab('Subscriptions') }}
+            className={`bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] ${nextSubscription ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''}`}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Next Payment</span>
+              {nextSubscription && (
+                <span className={`text-xs px-2 py-0.5 rounded-md font-bold ${nextSubscription.daysLeft === 0 ? 'bg-red-500/20 text-red-400' : 'bg-gray-800 text-gray-400'}`}>
+                  {nextSubscription.daysLeft === 0 ? 'Today' : `In ${nextSubscription.daysLeft} days`}
+                </span>
+              )}
+            </div>
+            
+            <div className="flex-1 flex flex-col justify-center">
+              {isLoading ? (
+                <div className="flex items-center justify-center text-gray-400 font-medium h-full">Loading...</div>
+              ) : nextSubscription ? (
+                <div className="flex justify-between items-center w-full gap-4">
+                  <div className="flex flex-col min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: nextSubscription.subjColor }}></div>
+                      <span className="font-bold text-lg text-white truncate">{nextSubscription.name}</span>
+                    </div>
+                    {nextSubscription.provider && <span className="text-xs text-gray-500 ml-4 truncate">{nextSubscription.provider}</span>}
+                  </div>
+                  
+                  {nextSubscription.cost && (
+                    <div className="flex flex-col items-end shrink-0">
+                      <span className="text-xl font-black text-gray-200">{nextSubscription.cost}</span>
+                      <span className="text-[10px] text-gray-500 font-bold uppercase">{nextSubscription.currency}</span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center justify-center text-gray-500 font-medium h-full">
+                  No upcoming payments
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 6. TODAY'S FOCUS WIDGET */}
           <div className="bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col justify-between min-h-[140px]">
-            <span className="text-sm font-semibold text-gray-400">Current Semester GPA</span>
-            <div className="text-5xl font-bold text-blue-400 mt-2">
-              {isLoading ? "-.--" : gpa.toFixed(2)}
+            <span className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Today's Focus</span>
+            <div className="text-5xl font-bold text-indigo-400 mt-2">
+              {isLoading ? "--:--" : formatTime(focusTime)}
             </div>
           </div>
 
@@ -469,19 +749,19 @@ export default function HomeView() {
         ) : activeTab === "Schedule" ? (
           <ScheduleView onBack={() => setActiveTab("Dashboard")} />
         ) : activeTab === "Exam Database & Archive" ? (
-          <ArchiveView onBack={() => setActiveTab("Dashboard")} />
+          <ArchiveView onBack={() => setActiveTab("More")} />
         ) : activeTab === "Plan" ? (
           <PlanView onBack={() => setActiveTab("Dashboard")} />
         ) : activeTab === "Todo" ? (
           <TodoView onBack={() => setActiveTab("Dashboard")} />
         ) : activeTab === "Subjects & Semesters" ? (
-          <SubjectsView onBack={() => setActiveTab("Dashboard")} />
+          <SubjectsView onBack={() => setActiveTab("More")} />
         ) : activeTab === "Grades" ? (
-          <GradesView onBack={() => setActiveTab("Dashboard")} />
+          <GradesView onBack={() => setActiveTab("More")} />
         ) : activeTab === "Subscriptions" ? (
-          <SubscriptionsView onBack={() => setActiveTab("Dashboard")} />
+          <SubscriptionsView onBack={() => setActiveTab("More")} />
         ) : activeTab === "Achievements" ? (
-          <AchievementsView onBack={() => setActiveTab("Dashboard")} />
+          <AchievementsView onBack={() => setActiveTab("More")} />
         ) : (
           <main className="flex-1 overflow-y-auto px-6 pb-24 md:p-10 pt-[calc(env(safe-area-inset-top)+1.5rem)]">
             
@@ -495,7 +775,12 @@ export default function HomeView() {
                 <button onClick={() => setActiveTab("Settings")} className="p-2.5 text-gray-400 hover:text-white bg-[#1c1c1e] hover:bg-gray-800 rounded-full transition-colors border border-gray-800">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                 </button>
-                <button onClick={() => supabase.auth.signOut()} className="p-2.5 text-gray-400 hover:text-red-400 bg-[#1c1c1e] hover:bg-red-500/10 rounded-full transition-colors border border-gray-800">
+                
+                {/* ZMIANA: LOGOUT warunkowo ukrywany na urządzeniach mobilnych jeśli PWA */}
+                <button 
+                  onClick={() => supabase.auth.signOut()} 
+                  className={`${isStandalone ? 'hidden md:block' : 'block'} p-2.5 text-gray-400 hover:text-red-400 bg-[#1c1c1e] hover:bg-red-500/10 rounded-full transition-colors border border-gray-800`}
+                >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
                 </button>
               </div>
@@ -528,8 +813,8 @@ export default function HomeView() {
           </main>
         )}
 
-        {/* DOLNY PASEK NAWIGACJI - Z PADDINGIEM BOTTOM */}
-        <nav className="md:hidden absolute bottom-0 w-full bg-[#1c1c1e]/90 backdrop-blur-md border-t border-gray-800 pb-[env(safe-area-inset-bottom)]">
+        {/* DOLNY PASEK NAWIGACJI */}
+        <nav className="md:hidden absolute bottom-0 w-full bg-[#1c1c1e]/90 backdrop-blur-md border-t border-gray-800">
           <div className="flex justify-around items-center h-20 px-2">
             {[...mainTabs, "More"].map((tab) => {
               const isSelected = activeTab === tab || (tab === "More" && moreTabs.includes(activeTab));

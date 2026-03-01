@@ -122,7 +122,7 @@ export default function ArchiveView({ onBack }) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#2b2b2b] text-white">
+    <div className="fixed inset-0 z-50 md:relative md:inset-auto md:z-auto flex flex-col h-full bg-[#2b2b2b] text-white">
       
       {/* HEADER Z SAFE AREA TOP */}
       <header className="flex flex-wrap items-center justify-between px-4 pb-4 pt-[calc(env(safe-area-inset-top)+1rem)] border-b border-gray-800 gap-4 shrink-0">
@@ -133,7 +133,8 @@ export default function ArchiveView({ onBack }) {
           <h1 className="text-xl md:text-2xl font-bold">Exam Archive</h1>
         </div>
 
-        <div className="flex items-center gap-3">
+        {/* Ukryte na telefonach po wejściu w szczegóły */}
+        <div className={`items-center gap-3 ${selectedExam ? 'hidden md:flex' : 'flex'}`}>
           <span className="text-sm text-gray-400 font-medium hidden md:block">Semester:</span>
           <select 
             value={selectedSemester} 
@@ -161,7 +162,7 @@ export default function ArchiveView({ onBack }) {
               <p className="text-gray-400">No exams found in this semester.</p>
             </div>
           ) : (
-            <div className="p-4 space-y-6 pb-32"> {/* Dodany grubszy padding dolny */}
+            <div className="p-4 space-y-6 pb-8">
               {groupedData.map(group => (
                 <div key={group.subject.id} className="space-y-2">
                   <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider ml-2 flex items-center gap-2">
@@ -251,7 +252,7 @@ export default function ArchiveView({ onBack }) {
               </div>
 
               {/* ZAWARTOŚĆ (TEMATY + NOTATNIK) */}
-              <div className="flex-1 overflow-y-auto p-4 md:p-8 pb-40">
+              <div className="flex-1 overflow-y-auto p-4 md:p-8 pb-24">
                 <div className="max-w-3xl mx-auto flex flex-col gap-8">
                   
                   {/* SEKCJA 1: TEMATY */}
@@ -324,8 +325,7 @@ export default function ArchiveView({ onBack }) {
                 </div>
               </div>
 
-              {/* POPRAWKA BOTTOM-28 DLA TELEFONU */}
-              <div className="absolute bottom-28 md:bottom-6 right-6 flex gap-3">
+              <div className="absolute bottom-6 right-6 flex gap-3">
                 <button 
                   onClick={() => { setExamToEdit(activeExamEnriched); setShowExamForm(true); }}
                   className="bg-[#3498db] text-white px-5 py-3 rounded-full font-bold shadow-lg shadow-[#3498db]/30 hover:scale-105 transition-transform flex items-center gap-2"

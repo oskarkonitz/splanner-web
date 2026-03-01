@@ -67,7 +67,7 @@ export default function SubjectsView({ onBack }) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#121212] md:bg-[#1c1c1e] text-white relative">
+    <div className="fixed inset-0 z-50 md:relative md:inset-auto md:z-auto flex flex-col h-full bg-[#121212] md:bg-[#1c1c1e] text-white">
       
       {/* HEADER */}
       <header className="flex flex-col pt-[calc(env(safe-area-inset-top)+1rem)] border-b border-gray-800 bg-[#1c1c1e] shrink-0 sticky top-0 z-30 shadow-md md:shadow-none">
@@ -127,7 +127,7 @@ export default function SubjectsView({ onBack }) {
         
         {/* LEWY PANEL (Semestry - Desktop Only / Mobile Tab) */}
         <div className={`w-full md:w-80 flex-col border-r border-gray-800 bg-[#121212] overflow-y-auto ${mobileTab === 'semesters' ? 'flex' : 'hidden md:flex'}`}>
-          <div className="p-4 space-y-2">
+          <div className="p-4 space-y-2 pb-8">
             <h3 className="hidden md:flex text-xs font-bold text-gray-500 uppercase tracking-wider mb-4 ml-2 items-center justify-between">
               Semesters
               <button onClick={() => { setSemesterToEdit(null); setShowSemesterForm(true); }} className="text-[#3498db] hover:text-white transition-colors">
@@ -184,7 +184,7 @@ export default function SubjectsView({ onBack }) {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-32">
+          <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-8">
             <div className="max-w-4xl mx-auto">
               {filteredSubjects.length === 0 ? (
                 <div className="flex flex-col items-center justify-center p-10 mt-10 opacity-50 text-center">
@@ -222,7 +222,6 @@ export default function SubjectsView({ onBack }) {
                         <div className="flex items-center gap-4">
                           <div className="hidden sm:flex flex-col items-end mr-4 opacity-70">
                             <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Duration</span>
-                            {/* Tutaj wyświetlamy samą uciętą datę */}
                             <span className="text-sm font-medium">{startDateStr} - {endDateStr}</span>
                           </div>
 

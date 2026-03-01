@@ -1,6 +1,5 @@
 @import "tailwindcss";
 
-/* To zabezpiecza całą przeglądarkę przed białym tłem */
 body {
   background-color: #2b2b2b;
 }

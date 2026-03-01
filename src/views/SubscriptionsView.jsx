@@ -171,7 +171,7 @@ export default function SubscriptionsView({ onBack }) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#2b2b2b] text-white">
+    <div className="fixed inset-0 z-50 md:relative md:inset-auto md:z-auto flex flex-col h-full bg-[#2b2b2b] text-white">
       
       {/* HEADER & SEARCH */}
       <header className="flex flex-col px-4 pb-4 pt-[calc(env(safe-area-inset-top)+1rem)] border-b border-gray-800 shrink-0 bg-[#1c1c1e] gap-4">
@@ -182,14 +182,17 @@ export default function SubscriptionsView({ onBack }) {
             </button>
             <h1 className="text-xl md:text-2xl font-bold">Subscriptions</h1>
           </div>
-          <button onClick={() => { setSubToEdit(null); setShowForm(true); }} className="flex items-center gap-2 px-4 py-2 bg-[#3498db] text-white rounded-xl text-sm font-bold hover:bg-blue-500 transition-colors">
+          <button 
+            onClick={() => { setSubToEdit(null); setShowForm(true); }} 
+            className={`flex items-center gap-2 px-4 py-2 bg-[#3498db] text-white rounded-xl text-sm font-bold hover:bg-blue-500 transition-colors ${selectedSub ? 'hidden md:flex' : 'flex'}`}
+          >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"></path></svg>
             Add New
           </button>
         </div>
 
         {/* SEARCH BAR */}
-        <div className="relative">
+        <div className={`relative ${selectedSub ? 'hidden md:block' : 'block'}`}>
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
           <input 
             type="text" 
@@ -210,7 +213,7 @@ export default function SubscriptionsView({ onBack }) {
       <main className="flex-1 flex overflow-hidden">
         
         {/* LEWY PANEL (Lista Timeline) */}
-        <div className={`w-full md:w-[40%] flex-col border-r border-gray-800 bg-[#121212] overflow-y-auto ${selectedSub ? 'hidden md:flex' : 'flex'} p-4 pb-32`}>
+        <div className={`w-full md:w-[40%] flex-col border-r border-gray-800 bg-[#121212] overflow-y-auto ${selectedSub ? 'hidden md:flex' : 'flex'} p-4 pb-12`}>
           {subscriptions.length === 0 ? (
             <div className="p-10 text-center text-gray-500 mt-10">
               <svg className="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
@@ -238,7 +241,7 @@ export default function SubscriptionsView({ onBack }) {
             const daysLeft = getDaysUntil(activeSubEnriched.expiry_date);
 
             return (
-              <div className="flex flex-col h-full">
+              <div className="flex flex-col h-full w-full">
                 {/* Detail Header */}
                 <div className="px-6 py-4 md:py-8 border-b border-gray-800 bg-[#2b2b2b] shrink-0">
                   <div className="flex items-center gap-3 mb-4 md:hidden">
@@ -248,16 +251,16 @@ export default function SubscriptionsView({ onBack }) {
                     </button>
                   </div>
                   
-                  <div className="flex items-start justify-between">
-                    <div>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
                        <div className="flex items-center gap-2 mb-1">
-                         <div className={`w-3 h-3 rounded-full`} style={{ backgroundColor: subj?.color || '#8e44ad' }}></div>
-                         <h2 className="text-3xl font-black text-white">{activeSubEnriched.name}</h2>
+                         <div className={`w-3 h-3 rounded-full shrink-0`} style={{ backgroundColor: subj?.color || '#8e44ad' }}></div>
+                         <h2 className="text-2xl md:text-3xl font-black text-white break-words">{activeSubEnriched.name}</h2>
                        </div>
-                       <div className="text-lg text-gray-400 font-medium ml-5">{activeSubEnriched.provider || 'No Provider'}</div>
+                       <div className="text-base md:text-lg text-gray-400 font-medium ml-5">{activeSubEnriched.provider || 'No Provider'}</div>
                     </div>
-                    <div className="text-right">
-                       <div className="text-3xl font-black text-white">{activeSubEnriched.cost} <span className="text-sm text-gray-500 font-bold">{activeSubEnriched.currency}</span></div>
+                    <div className="text-right shrink-0">
+                       <div className="text-2xl md:text-3xl font-black text-white">{activeSubEnriched.cost} <span className="text-sm text-gray-500 font-bold">{activeSubEnriched.currency}</span></div>
                        <div className="text-sm text-[#3498db] font-bold capitalize">{activeSubEnriched.billing_cycle}</div>
                     </div>
                   </div>
@@ -308,7 +311,7 @@ export default function SubscriptionsView({ onBack }) {
                   {/* Powiązany Przedmiot */}
                   {subj && (
                     <div className="bg-[#2b2b2b] rounded-2xl border border-gray-800 p-4 flex items-center gap-3">
-                       <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-white/5 border border-white/10">
+                       <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-white/5 border border-white/10 shrink-0">
                           <svg className="w-5 h-5" style={{ color: subj.color }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
                        </div>
                        <div>

@@ -3,14 +3,10 @@ import { supabase } from '../api/supabase'
 import { useData } from '../context/DataContext'
 
 export default function SettingsView({ onBack }) {
-  const { session, semesters } = useData()
+  const { session } = useData()
   
   // Stan do zarządzania okienkami (modalami) na wzór LoginView
   const [activeModal, setActiveModal] = useState(null)
-  
-  // Przykładowy stan lokalny (w przyszłości podepniesz pod Supabase/AppStorage)
-  const [selectedSemester, setSelectedSemester] = useState('ALL')
-  const [isFocusGoalEnabled, setIsFocusGoalEnabled] = useState(true)
 
   // Pomocniczy komponent do renderowania sekcji na wzór iOS Form
   const Section = ({ title, children }) => (
@@ -44,17 +40,17 @@ export default function SettingsView({ onBack }) {
   )
 
   return (
-    <div className="flex flex-col h-full bg-[#2b2b2b] text-white">
+    <div className="fixed inset-0 z-50 md:relative md:inset-auto md:z-auto flex flex-col h-full bg-[#2b2b2b] text-white">
       
       {/* HEADER (Widoczny głównie na Mobile/PWA) - Zoptymalizowany pod notch */}
       <header className="relative flex items-center justify-between p-4 pt-[calc(env(safe-area-inset-top)+1rem)] md:p-6 md:pt-[calc(env(safe-area-inset-top)+1.5rem)] border-b border-gray-800 md:border-none shrink-0">
         <div className="flex-1 flex justify-start">
           <button 
             onClick={onBack} 
-            className="flex items-center gap-1 text-[#3498db] text-lg font-medium active:opacity-70 transition-opacity"
+            className="md:hidden flex items-center gap-1 text-[#3498db] text-lg font-medium active:opacity-70 transition-opacity"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"></path></svg>
-            <span className="md:hidden">Back</span>
+            <span>Back</span>
           </button>
         </div>
         <h1 className="text-xl md:text-3xl font-bold text-center shrink-0">Settings</h1>
@@ -62,27 +58,9 @@ export default function SettingsView({ onBack }) {
       </header>
 
       {/* GŁÓWNA ZAWARTOŚĆ */}
-      <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 max-w-3xl mx-auto w-full">
+      <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-8 max-w-3xl mx-auto w-full">
         
-        <Section title="Academic Schedule">
-          <Row 
-            title="Current Semester" 
-            value={selectedSemester === 'ALL' ? 'All Semesters' : semesters?.find(s => s.id === selectedSemester)?.name || 'Unknown'}
-            hasArrow
-            onClick={() => setActiveModal('semester')}
-          />
-        </Section>
-
         <Section title="Preferences">
-          {/* Prosty toggle bez strzałki */}
-          <div className="flex items-center justify-between p-4 border-b border-gray-800">
-            <span className="font-medium">Focus Goal Alert</span>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input type="checkbox" className="sr-only peer" checked={isFocusGoalEnabled} onChange={(e) => setIsFocusGoalEnabled(e.target.checked)} />
-              <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
-            </label>
-          </div>
-          <Row title="Notifications" hasArrow onClick={() => setActiveModal('notifications')} />
           <Row title="Tasks Shortcuts" hasArrow onClick={() => setActiveModal('shortcuts')} />
         </Section>
 
@@ -117,31 +95,6 @@ export default function SettingsView({ onBack }) {
           {/* Karta Modala (w stylu LoginView) */}
           <div className="relative bg-[#1c1c1e] p-6 rounded-3xl shadow-2xl border border-white/10 w-full max-w-sm flex flex-col gap-6 animate-in fade-in zoom-in-95 duration-200">
             
-            {/* Modal: Zmiana Semestru */}
-            {activeModal === 'semester' && (
-              <>
-                <h3 className="text-xl font-bold text-center">Select Semester</h3>
-                <div className="flex flex-col gap-2 max-h-[40vh] overflow-y-auto pr-2">
-                  <button 
-                    onClick={() => { setSelectedSemester('ALL'); setActiveModal(null); }}
-                    className={`p-3 rounded-xl text-left transition-colors ${selectedSemester === 'ALL' ? 'bg-[#3498db] text-white' : 'bg-white/5 hover:bg-white/10'}`}
-                  >
-                    All Semesters
-                  </button>
-                  {semesters?.map(sem => (
-                    <button 
-                      key={sem.id}
-                      onClick={() => { setSelectedSemester(sem.id); setActiveModal(null); }}
-                      className={`p-3 rounded-xl text-left transition-colors ${selectedSemester === sem.id ? 'bg-[#3498db] text-white' : 'bg-white/5 hover:bg-white/10'}`}
-                    >
-                      {sem.name}
-                    </button>
-                  ))}
-                </div>
-                <button onClick={() => setActiveModal(null)} className="w-full py-3 text-gray-400 font-medium mt-2">Cancel</button>
-              </>
-            )}
-
             {/* Modal: Wylogowanie */}
             {activeModal === 'logout' && (
               <>
@@ -167,7 +120,7 @@ export default function SettingsView({ onBack }) {
             )}
 
             {/* Modal: Placeholdery na resztę */}
-            {(activeModal === 'notifications' || activeModal === 'shortcuts') && (
+            {(activeModal === 'shortcuts') && (
               <>
                 <h3 className="text-xl font-bold text-center">Work in progress</h3>
                 <p className="text-gray-400 text-sm text-center">This feature is being ported from the iOS app.</p>

@@ -233,8 +233,6 @@ export default function TodoView({ onBack }) {
     e.stopPropagation();
     e.preventDefault();
     setContextMenu({
-      // ZMIANA: Zmieniono margines z 200 na 240, aby okienko w-56 (224px) 
-      // nigdy nie wychodziło poza prawą krawędź ekranu i nie tworzyło scrolla.
       x: Math.min(e.clientX, window.innerWidth - 240),
       y: Math.min(e.clientY, window.innerHeight - 150),
       task
@@ -249,7 +247,10 @@ export default function TodoView({ onBack }) {
     setContextMenu(null);
   };
 
-  const onDragStart = (e, task) => e.dataTransfer.setData('taskId', task.id);
+  const onDragStart = (e, task) => {
+    e.dataTransfer.setData('taskId', task.id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
   const onDragOverList = (e, listId) => { e.preventDefault(); setDraggedOverList(listId); };
   const onDragLeaveList = (e) => { e.preventDefault(); setDraggedOverList(null); };
   const onDropList = async (e, listId) => {
@@ -279,59 +280,72 @@ export default function TodoView({ onBack }) {
     
     return (
       <div 
-        draggable
-        onDragStart={(e) => onDragStart(e, task)}
         onContextMenu={(e) => handleContextMenu(e, task)}
         onClick={(e) => handleContextMenu(e, task)}
-        className={`flex items-center gap-3 p-3 transition-colors hover:bg-white/5 active:bg-white/10 border-b border-gray-800/50 last:border-0 group cursor-pointer ${isDone ? 'opacity-50' : ''}`}
+        className={`relative flex items-center gap-3 p-3 transition-colors hover:bg-white/5 active:bg-white/10 border-b border-gray-800/50 last:border-0 group cursor-pointer overflow-hidden ${isDone ? 'opacity-50' : ''}`}
       >
-        <div className="w-1.5 self-stretch rounded-full shrink-0" style={{ backgroundColor: task.color || '#3498db' }}></div>
+        {/* DRAG HANDLE (Tylko Desktop, widoczne po najechaniu) */}
+        <div 
+          draggable
+          onDragStart={(e) => { e.stopPropagation(); onDragStart(e, task); }}
+          className="hidden md:flex opacity-0 group-hover:opacity-100 items-center justify-center cursor-grab active:cursor-grabbing w-4 h-full absolute left-0 shrink-0 text-gray-500 hover:text-white bg-gradient-to-r from-[#1c1c1e] via-[#1c1c1e] to-transparent z-10 pl-1"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8h16M4 16h16"></path></svg>
+        </div>
+
+        {/* KOLOR */}
+        <div className="w-1.5 self-stretch rounded-full shrink-0 md:ml-4 z-0" style={{ backgroundColor: task.color || '#3498db' }}></div>
         
+        {/* PRZYCISK ZROBIONE */}
         <button 
           onClick={(e) => { e.stopPropagation(); toggleTaskStatus(task); }}
           className={`w-6 h-6 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors ${isDone ? 'bg-green-500 border-green-500' : 'border-gray-500 hover:border-gray-400'}`}
         >
-          {isDone && <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"></path></svg>}
+          {isDone && <svg className="w-4 h-4 text-white shrink-0" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"></path></svg>}
         </button>
 
-        <div className="flex-1 min-w-0 pr-2">
-          <div className={`text-[15px] font-medium truncate ${isDone ? 'line-through text-gray-500' : 'text-gray-200'}`}>
-            {task.content}
-          </div>
-          {task.note && (
-             <div 
-               onClick={(e) => openNoteEditor(e, task)}
-               className="text-xs text-gray-400 bg-black/30 px-2 py-1 rounded-md inline-block mt-1 hover:text-white transition-colors"
-             >
-               ✎ Note
-             </div>
-          )}
+        {/* TEKST - dodane zawijanie tekstu */}
+        <div className={`flex-1 min-w-0 pr-2 text-[15px] font-medium break-words whitespace-normal leading-tight py-1 ${isDone ? 'line-through text-gray-500' : 'text-gray-200'}`}>
+          {task.content}
         </div>
 
-        <div className="hidden md:flex opacity-0 group-hover:opacity-100 transition-opacity gap-1 shrink-0">
-           {!task.note && (
-             <button onClick={(e) => openNoteEditor(e, task)} className="p-1.5 text-gray-400 hover:text-[#f1c40f] rounded-md hover:bg-white/10" title="Add Note">
-               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
-             </button>
-           )}
-           <button onClick={(e) => { e.stopPropagation(); handleEditTask(task); }} className="p-1.5 text-gray-400 hover:text-[#3498db] rounded-md hover:bg-white/10" title="Edit Task">
-             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-           </button>
-           <button onClick={(e) => { e.stopPropagation(); deleteTask(task.id); }} className="p-1.5 text-gray-400 hover:text-red-500 rounded-md hover:bg-red-500/10" title="Delete Task">
-             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-           </button>
+        {/* NOTATKA ORAZ OPCJE */}
+        <div className="flex items-center gap-2 shrink-0">
+          {task.note && (
+            <span 
+              onClick={(e) => openNoteEditor(e, task)}
+              className="text-xs text-gray-400 bg-black/30 px-2 py-1 rounded-md hover:text-white transition-colors cursor-pointer shrink-0"
+            >
+              ✎ Note
+            </span>
+          )}
+
+          {/* OPCJE (DESKTOP HOVER) */}
+          <div className="hidden md:flex opacity-0 group-hover:opacity-100 transition-opacity gap-1 shrink-0">
+            {!task.note && (
+              <button onClick={(e) => openNoteEditor(e, task)} className="p-1.5 text-gray-400 hover:text-[#f1c40f] rounded-md hover:bg-white/10" title="Add Note">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+              </button>
+            )}
+            <button onClick={(e) => { e.stopPropagation(); handleEditTask(task); }} className="p-1.5 text-gray-400 hover:text-[#3498db] rounded-md hover:bg-white/10" title="Edit Task">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+            </button>
+            <button onClick={(e) => { e.stopPropagation(); deleteTask(task.id); }} className="p-1.5 text-gray-400 hover:text-red-500 rounded-md hover:bg-red-500/10" title="Delete Task">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+            </button>
+          </div>
         </div>
       </div>
     );
   };
 
   return (
-    <div className="flex h-full bg-[#121212] md:bg-[#1c1c1e] text-white overflow-hidden relative">
+    <div className="flex h-full w-full max-w-[100vw] bg-[#121212] md:bg-[#1c1c1e] text-white overflow-hidden relative">
       
       {/* ======================================= */}
       {/* DESKTOP LEWY PANEL (Nawigacja List)     */}
       {/* ======================================= */}
-      <div className="hidden md:flex flex-col w-64 bg-[#121212] border-r border-gray-800 pt-[calc(env(safe-area-inset-top)+1.5rem)]">
+      <div className="hidden md:flex flex-col w-64 bg-[#121212] border-r border-gray-800 pt-[calc(env(safe-area-inset-top)+1.5rem)] shrink-0">
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
           
           <div>
@@ -351,7 +365,7 @@ export default function TodoView({ onBack }) {
                   onDrop={(e) => onDropList(e, list.id)}
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-colors ${activeListId === list.id ? 'bg-[#3498db] text-white shadow-md' : (draggedOverList === list.id ? 'bg-[#3498db]/20 border border-[#3498db]/50' : 'text-gray-400 hover:bg-white/5 border border-transparent')}`}
                 >
-                  <svg className="w-4 h-4 opacity-80" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d={list.icon}></path></svg>
+                  <svg className="w-4 h-4 opacity-80 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d={list.icon}></path></svg>
                   {list.name}
                 </button>
               ))}
@@ -361,7 +375,7 @@ export default function TodoView({ onBack }) {
           <div>
             <div className="flex items-center justify-between mb-2 px-2">
               <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">My Lists</h3>
-              <button onClick={() => setShowListForm(true)} className="text-[#3498db] hover:text-white transition-colors">
+              <button onClick={() => setShowListForm(true)} className="text-[#3498db] hover:text-white transition-colors shrink-0">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"></path></svg>
               </button>
             </div>
@@ -373,7 +387,7 @@ export default function TodoView({ onBack }) {
                     onDragOver={(e) => onDragOverList(e, list.id)}
                     onDragLeave={onDragLeaveList}
                     onDrop={(e) => onDropList(e, list.id)}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-colors ${activeListId === list.id ? 'bg-[#3498db] text-white shadow-md' : (draggedOverList === list.id ? 'bg-[#3498db]/20 border border-[#3498db]/50' : 'text-gray-400 hover:bg-white/5 border border-transparent')}`}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-colors min-w-0 ${activeListId === list.id ? 'bg-[#3498db] text-white shadow-md' : (draggedOverList === list.id ? 'bg-[#3498db]/20 border border-[#3498db]/50' : 'text-gray-400 hover:bg-white/5 border border-transparent')}`}
                   >
                     <div className="flex items-center gap-3 truncate min-w-0">
                       <span className="text-lg leading-none shrink-0">{list.icon || (list.list_type === 'shopping' ? '🛒' : '📁')}</span>
@@ -382,7 +396,7 @@ export default function TodoView({ onBack }) {
                   </button>
                   <button 
                     onClick={(e) => { e.stopPropagation(); if(window.confirm(`Delete list: ${list.name}?`)) { deleteTaskList(list.id); if(activeListId === list.id) setActiveListId('all'); } }}
-                    className={`absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-500/20 ${activeListId === list.id ? 'flex' : 'hidden group-hover:flex'}`}
+                    className={`absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-500/20 shrink-0 ${activeListId === list.id ? 'flex' : 'hidden group-hover:flex'}`}
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                   </button>
@@ -397,14 +411,13 @@ export default function TodoView({ onBack }) {
       {/* ======================================= */}
       {/* ŚRODKOWY PANEL (Główna lista zadań)     */}
       {/* ======================================= */}
-      <div className="flex-1 flex flex-col min-w-0 bg-[#121212] md:bg-transparent transition-all duration-300">
+      <div className="flex-1 flex flex-col min-w-0 w-full max-w-full overflow-x-hidden bg-[#121212] md:bg-transparent transition-all duration-300">
         
         {/* NAGŁÓWEK MOBILE & DESKTOP */}
-        <header className={`flex flex-col md:flex-row md:items-center justify-between p-4 pb-2 md:pb-4 border-b border-gray-800 bg-[#1c1c1e] md:bg-transparent shrink-0 md:pt-[calc(env(safe-area-inset-top)+1.5rem)] md:px-8 ${!document.body.classList.contains('md:hidden') ? 'pt-[calc(env(safe-area-inset-top)+1rem)]' : ''}`}>
-          {/* ZMIANA: min-w-0 dodane na rodzicach, aby h1 mógł bezpiecznie się ucinać (truncate) nie rozciągając ekranu */}
+        <header className="flex flex-col md:flex-row md:items-center justify-between p-4 pb-2 md:pb-4 pt-[calc(env(safe-area-inset-top)+1rem)] md:pt-[calc(env(safe-area-inset-top)+1.5rem)] border-b border-gray-800 bg-[#1c1c1e] md:bg-transparent shrink-0 md:px-8 w-full max-w-full">
           <div className="flex items-center justify-between w-full md:w-auto min-w-0 gap-2">
             <div className="flex items-center gap-3 min-w-0 flex-1 pr-2">
-              <h1 className="text-xl md:text-3xl font-bold flex items-center gap-2 min-w-0 w-full">
+              <h1 className="text-xl md:text-3xl font-bold flex items-center gap-2 min-w-0 w-full overflow-hidden">
                 {activeList?.icon && <span className="shrink-0">{activeList.icon}</span>}
                 <span className="truncate block">
                   {activeListId === 'all' ? 'All Tasks' : 
@@ -417,27 +430,53 @@ export default function TodoView({ onBack }) {
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
+              
+              {/* MOBILE: Przeniesione filtry daty i koloru na górny pasek */}
+              <div className="md:hidden flex items-center gap-2 bg-[#2b2b2b] px-2 py-1 rounded-xl border border-gray-700">
+                {!isShoppingList && !showDateInput && (
+                  <button type="button" onClick={() => setShowDateInput(true)} className="text-gray-400 hover:text-[#3498db] transition-colors p-1" title="Set Date">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                  </button>
+                )}
+                {!isShoppingList && showDateInput && (
+                  <input 
+                    type="date" 
+                    value={quickDate}
+                    onChange={(e) => setQuickDate(e.target.value)}
+                    className="bg-transparent text-[#3498db] text-xs font-medium focus:outline-none [color-scheme:dark] cursor-pointer w-[95px] shrink-0"
+                  />
+                )}
+                <input 
+                  type="color" 
+                  value={quickColor}
+                  onChange={(e) => setQuickColor(e.target.value)}
+                  className="w-5 h-5 rounded-full border-none bg-transparent cursor-pointer p-0 shrink-0"
+                  title="Label Color"
+                />
+              </div>
+
+
               {isShoppingList && groupedTasks.bought?.length > 0 && (
                 <button 
                   onClick={() => sweepCompletedTasks(activeListId)}
-                  className="flex items-center gap-2 text-xs font-bold text-red-500 bg-red-500/10 px-3 py-1.5 rounded-lg hover:bg-red-500/20 transition-colors"
+                  className="flex items-center gap-2 text-xs font-bold text-red-500 bg-red-500/10 px-3 py-1.5 rounded-lg hover:bg-red-500/20 transition-colors shrink-0"
                 >
                   <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                   <span className="hidden sm:inline">Sweep</span>
                 </button>
               )}
               
-              <div className="md:hidden flex items-center gap-1 relative">
-                <button onClick={() => setShowListForm(true)} className="p-2 text-gray-400 hover:text-white transition-colors">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"></path></svg>
+              <div className="md:hidden flex items-center gap-1 relative shrink-0">
+                <button onClick={() => setShowListForm(true)} className="p-2 text-gray-400 hover:text-white transition-colors shrink-0">
+                  <svg className="w-6 h-6 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"></path></svg>
                 </button>
-                <button onClick={(e) => { e.stopPropagation(); setMobileFilterOpen(!mobileFilterOpen); }} className="p-2 text-gray-400 hover:text-white transition-colors">
-                   <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h7"></path></svg>
+                <button onClick={(e) => { e.stopPropagation(); setMobileFilterOpen(!mobileFilterOpen); }} className="p-2 text-gray-400 hover:text-white transition-colors shrink-0">
+                   <svg className="w-6 h-6 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h7"></path></svg>
                 </button>
 
                 {mobileFilterOpen && (
                   <div 
-                    className="absolute top-full right-0 mt-2 w-56 bg-[#2b2b2b] border border-gray-700 rounded-xl shadow-2xl z-50 p-2 animate-in fade-in zoom-in-95 duration-100 max-h-96 overflow-y-auto"
+                    className="absolute top-full right-0 mt-2 w-56 max-w-[calc(100vw-2rem)] bg-[#2b2b2b] border border-gray-700 rounded-xl shadow-2xl z-50 p-2 animate-in fade-in zoom-in-95 duration-100 max-h-96 overflow-y-auto"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 ml-2 mt-1">System Lists</div>
@@ -480,24 +519,51 @@ export default function TodoView({ onBack }) {
           </div>
         </header>
 
-        {/* ZUNIFIKOWANY PASEK QUICK ADD / EDIT (Widoczny wszędzie) */}
-        <div className={`p-3 md:p-4 md:px-8 bg-[#1c1c1e] shrink-0 border-b ${editingTask ? 'border-green-500/50 shadow-[0_4px_15px_-3px_rgba(34,197,94,0.1)]' : 'border-gray-800'}`}>
-          <form onSubmit={handleQuickSubmit} className="flex flex-col sm:flex-row sm:items-center gap-3 md:gap-4">
-            <input 
-              ref={inputRef}
-              type="text" 
-              placeholder={editingTask ? "Edit task..." : "Add new task..."}
-              value={quickAddText}
-              onChange={(e) => setQuickAddText(e.target.value)}
-              className="flex-1 min-w-0 bg-[#2b2b2b] md:bg-transparent text-white px-4 py-2.5 md:p-0 rounded-xl md:rounded-none border border-gray-700 md:border-none focus:outline-none focus:border-[#3498db] md:text-lg w-full"
-            />
+        {/* ZUNIFIKOWANY PASEK QUICK ADD / EDIT */}
+        <div className={`p-3 md:p-4 md:px-8 bg-[#1c1c1e] shrink-0 border-b w-full max-w-full ${editingTask ? 'border-green-500/50 shadow-[0_4px_15px_-3px_rgba(34,197,94,0.1)]' : 'border-gray-800'}`}>
+          <form onSubmit={handleQuickSubmit} className="flex flex-col sm:flex-row sm:items-center gap-3 md:gap-4 w-full min-w-0">
             
-            {/* ZMIANA: flex-wrap sm:flex-nowrap dla węższych ekranów w module narzędzi */}
-            <div className="flex flex-wrap sm:flex-nowrap items-center justify-between sm:justify-end gap-3 w-full sm:w-auto shrink-0">
-                <div className="flex items-center gap-3 bg-[#2b2b2b] px-3 py-1.5 rounded-xl border border-gray-700">
+            <div className="flex w-full items-center gap-3">
+              <input 
+                ref={inputRef}
+                type="text" 
+                placeholder={editingTask ? "Edit task..." : "Add new task..."}
+                value={quickAddText}
+                onChange={(e) => setQuickAddText(e.target.value)}
+                className="flex-1 min-w-0 bg-[#2b2b2b] md:bg-transparent text-white px-4 py-2.5 md:p-0 rounded-xl md:rounded-none border border-gray-700 md:border-none focus:outline-none focus:border-[#3498db] md:text-lg w-full"
+              />
+
+              {/* MOBILE: Przycisk dodaj (Po prawej stronie inputa) */}
+              <div className="flex md:hidden items-center gap-2 shrink-0">
+                {editingTask && (
+                  <button 
+                    type="button" 
+                    onClick={handleCancelEdit}
+                    className="w-10 h-10 text-gray-400 hover:text-white flex items-center justify-center font-bold bg-[#2b2b2b] rounded-xl border border-gray-700 transition-colors shrink-0"
+                  >
+                    <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg>
+                  </button>
+                )}
+                <button 
+                  type="submit"
+                  disabled={!quickAddText.trim()}
+                  className={`w-11 h-11 text-white rounded-xl flex items-center justify-center font-bold disabled:opacity-50 transition-colors shadow-md shrink-0 ${editingTask ? 'bg-green-500 hover:bg-green-600' : 'bg-[#3498db] hover:bg-blue-600'}`}
+                >
+                  {editingTask ? (
+                    <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"></path></svg>
+                  ) : (
+                    <svg className="w-6 h-6 shrink-0" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"></path></svg>
+                  )}
+                </button>
+              </div>
+            </div>
+            
+            {/* DESKTOP: Przyciski z filtrem i statusem */}
+            <div className="hidden md:flex flex-wrap sm:flex-nowrap items-center justify-between sm:justify-end gap-3 w-full sm:w-auto shrink-0 min-w-0">
+                <div className="flex items-center gap-3 bg-[#2b2b2b] px-3 py-1.5 rounded-xl border border-gray-700 min-w-0 max-w-full overflow-hidden">
                   {/* DATA */}
                   {!isShoppingList && !showDateInput && (
-                    <button type="button" onClick={() => setShowDateInput(true)} className="text-gray-400 hover:text-[#3498db] transition-colors p-1" title="Set Date">
+                    <button type="button" onClick={() => setShowDateInput(true)} className="text-gray-400 hover:text-[#3498db] transition-colors p-1 shrink-0" title="Set Date">
                       <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                     </button>
                   )}
@@ -506,7 +572,7 @@ export default function TodoView({ onBack }) {
                       type="date" 
                       value={quickDate}
                       onChange={(e) => setQuickDate(e.target.value)}
-                      className="bg-transparent text-[#3498db] text-sm font-medium focus:outline-none [color-scheme:dark] cursor-pointer"
+                      className="bg-transparent text-[#3498db] text-sm font-medium focus:outline-none [color-scheme:dark] cursor-pointer w-[110px] sm:w-auto shrink-0"
                     />
                   )}
 
@@ -528,7 +594,7 @@ export default function TodoView({ onBack }) {
                       onClick={handleCancelEdit}
                       className="w-10 h-10 text-gray-400 hover:text-white flex items-center justify-center font-bold bg-[#2b2b2b] rounded-full border border-gray-700 transition-colors shrink-0"
                     >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg>
+                      <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg>
                     </button>
                   )}
 
@@ -539,9 +605,9 @@ export default function TodoView({ onBack }) {
                     className={`w-10 h-10 text-white rounded-full flex items-center justify-center font-bold disabled:opacity-50 transition-colors shadow-md shrink-0 ${editingTask ? 'bg-green-500 hover:bg-green-600' : 'bg-[#3498db] hover:bg-blue-600'}`}
                   >
                     {editingTask ? (
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"></path></svg>
+                      <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"></path></svg>
                     ) : (
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"></path></svg>
+                      <svg className="w-6 h-6 shrink-0" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"></path></svg>
                     )}
                   </button>
                 </div>
@@ -550,11 +616,11 @@ export default function TodoView({ onBack }) {
         </div>
 
         {/* GŁÓWNA LISTA */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 pb-32">
-          <div className="max-w-4xl mx-auto space-y-6 w-full">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-8 pb-32 w-full max-w-full">
+          <div className="max-w-4xl mx-auto space-y-6 w-full min-w-0">
             
             {filteredTasks.length === 0 ? (
-              <div className="flex flex-col items-center justify-center p-10 mt-10 opacity-50 text-center">
+              <div className="flex flex-col items-center justify-center p-10 mt-10 opacity-50 text-center break-words">
                 <span className="text-5xl mb-4">{isShoppingList ? '🛒' : '📝'}</span>
                 <h2 className="text-xl font-bold">List is empty.</h2>
                 <p className="text-gray-400 mt-1">Use the bar above to insert new items.</p>
@@ -566,7 +632,7 @@ export default function TodoView({ onBack }) {
                   <>
                     {groupedTasks.toBuy?.length > 0 && (
                       <section>
-                        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2 ml-2">To Buy</h3>
+                        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2 ml-2 break-words">To Buy</h3>
                         <div className="bg-[#1c1c1e] rounded-2xl overflow-hidden shadow-sm border border-white/5">
                           {groupedTasks.toBuy.map(task => <TaskRow key={task.id} task={task} />)}
                         </div>
@@ -574,7 +640,7 @@ export default function TodoView({ onBack }) {
                     )}
                     {groupedTasks.bought?.length > 0 && (
                       <section>
-                        <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2 ml-2 mt-6">Bought</h3>
+                        <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2 ml-2 mt-6 break-words">Bought</h3>
                         <div className="bg-[#1c1c1e]/50 rounded-2xl overflow-hidden shadow-sm border border-white/5">
                           {groupedTasks.bought.map(task => <TaskRow key={task.id} task={task} />)}
                         </div>
@@ -588,7 +654,7 @@ export default function TodoView({ onBack }) {
                   <>
                     {groupedTasks.overdue?.length > 0 && (
                       <section>
-                        <h3 className="text-sm font-bold text-red-500 uppercase tracking-wider mb-2 ml-2">Overdue</h3>
+                        <h3 className="text-sm font-bold text-red-500 uppercase tracking-wider mb-2 ml-2 break-words">Overdue</h3>
                         <div className="bg-[#1c1c1e] rounded-2xl overflow-hidden shadow-sm border border-red-500/20">
                           {groupedTasks.overdue.map(task => <TaskRow key={task.id} task={task} />)}
                         </div>
@@ -597,7 +663,7 @@ export default function TodoView({ onBack }) {
                     
                     {groupedTasks.upcoming?.map(group => (
                       <section key={group.title}>
-                        <h3 className={`text-sm font-bold uppercase tracking-wider mb-2 ml-2 mt-6 ${group.dateVal === todayStr ? 'text-[#3498db]' : 'text-gray-400'}`}>
+                        <h3 className={`text-sm font-bold uppercase tracking-wider mb-2 ml-2 mt-6 break-words ${group.dateVal === todayStr ? 'text-[#3498db]' : 'text-gray-400'}`}>
                           {group.title}
                         </h3>
                         <div className="bg-[#1c1c1e] rounded-2xl overflow-hidden shadow-sm border border-white/5">

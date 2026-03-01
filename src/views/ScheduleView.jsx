@@ -351,9 +351,6 @@ export default function ScheduleView({ onBack }) {
       {/* ZMIANA: Dodano pt-[calc(env(safe-area-inset-top)+1rem)] na notcha oraz zmniejszono gap-4 na gap-2 sm:gap-4 dla małych ekranów */}
       <header className="flex flex-wrap items-center justify-between p-4 pt-[calc(env(safe-area-inset-top)+1rem)] border-b border-gray-800 gap-2 sm:gap-4 shrink-0">
         <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-          <button onClick={onBack} className="md:hidden p-2 text-[#3498db] shrink-0">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"></path></svg>
-          </button>
           <h1 className="text-xl md:text-3xl font-bold hidden md:block truncate">Schedule</h1>
           
           <div className="relative shrink-0">
@@ -386,7 +383,7 @@ export default function ScheduleView({ onBack }) {
         </div>
 
         {/* ZMIANA: Optymalizacja prawej sekcji nagłówka pod małe ekrany */}
-        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0 ml-auto">
           <button 
             onClick={() => { setFormInitialData(null); setShowEventForm(true); }} 
             className="p-1.5 text-gray-400 hover:text-[#3498db] transition-colors md:mr-2 shrink-0"
@@ -412,7 +409,7 @@ export default function ScheduleView({ onBack }) {
 
       <div className="md:hidden flex flex-col flex-1 overflow-hidden bg-[#121212]">
         {/* ZMIANA: Użycie flex-1 na elementach dni zamiast sztywnych szerokości, zapobiega to scrollowi/ucinaniu */}
-        <div className="flex justify-between sm:justify-start overflow-x-auto gap-1 sm:gap-3 px-2 sm:px-4 py-2 sm:py-3 bg-[#1c1c1e] border-b border-gray-800 scrollbar-hide">
+        <div className="flex justify-between sm:justify-start overflow-x-auto gap-1 sm:gap-3 px-2 sm:px-4 py-2 sm:py-3 bg-[#1c1c1e] border-b border-gray-800 scrollbar-hide shrink-0">
           {weekDates.map((date, i) => {
             const dateStr = toDateString(date);
             const isSelected = dateStr === selectedDate;
@@ -432,7 +429,7 @@ export default function ScheduleView({ onBack }) {
           })}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-32">
           {agendaItems.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-48 opacity-50">
               <svg className="w-12 h-12 mb-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -443,21 +440,26 @@ export default function ScheduleView({ onBack }) {
               <div 
                 key={block.id} 
                 onClick={(e) => handleBlockClick(e, block)}
-                className={`relative bg-[#1c1c1e] rounded-xl overflow-hidden shadow-sm active:scale-[0.98] transition-transform p-4 flex gap-4 ${block.type === 'exam' ? 'border border-red-500/30 bg-red-500/5' : ''}`}
+                className={`relative bg-[#1c1c1e] rounded-xl overflow-hidden shadow-sm active:scale-[0.98] transition-transform p-4 flex gap-4 h-auto ${block.type === 'exam' ? 'border border-red-500/30 bg-red-500/5' : ''}`}
               >
                 <div className="absolute left-0 top-0 bottom-0 w-1.5" style={{ backgroundColor: block.color }}></div>
-                <div className="w-16 flex-shrink-0 flex flex-col text-right">
+                <div className="w-14 sm:w-16 flex-shrink-0 flex flex-col text-right justify-start mt-0.5">
                   <span className={`text-sm font-bold ${block.type === 'exam' ? 'text-red-500' : 'text-white'}`}>{block.startTime}</span>
                   {block.endTime && <span className="text-xs text-gray-500 font-medium">{block.endTime}</span>}
                 </div>
                 <div className="w-px bg-gray-800"></div>
                 <div className="flex-1 flex flex-col justify-center min-w-0">
                   {block.type === 'exam' && <span className="text-[10px] font-bold text-red-500 mb-0.5">{block.subtitle}</span>}
-                  <span className="font-bold text-white text-base leading-tight mb-1 truncate">{block.title}</span>
+                  
+                  {/* ZMIANA: Usunięto 'truncate' na rzecz zawijania wierszy. Ograniczam do 2/3 linii by nie robiło się zbyt długie */}
+                  <span className="font-bold text-white text-base leading-tight mb-1 line-clamp-3 break-words whitespace-normal">
+                    {block.title}
+                  </span>
+                  
                   {block.type !== 'exam' && block.subtitle && (
-                    <span className="text-xs text-gray-400 flex items-center gap-1.5 truncate">
-                      {block.type === 'class' && <svg className="w-3.5 h-3.5 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.838L7.667 9.088l1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.838l-7-3zM3.31 8.56l-1.222.524a1 1 0 000 1.838l7 3a1 1 0 00.788 0l7-3a1 1 0 000-1.838H16.8l-6.4 2.743a1 1 0 01-.8 0L3.31 8.56z"/></svg>}
-                      {block.subtitle}
+                    <span className="text-xs text-gray-400 flex items-start gap-1.5 mt-0.5 leading-tight">
+                      {block.type === 'class' && <svg className="w-3.5 h-3.5 shrink-0 mt-px" fill="currentColor" viewBox="0 0 20 20"><path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.838L7.667 9.088l1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.838l-7-3zM3.31 8.56l-1.222.524a1 1 0 000 1.838l7 3a1 1 0 00.788 0l7-3a1 1 0 000-1.838H16.8l-6.4 2.743a1 1 0 01-.8 0L3.31 8.56z"/></svg>}
+                      <span className="break-words line-clamp-2">{block.subtitle}</span>
                     </span>
                   )}
                   {(block.isCutTop || block.isCutBottom) && <span className="text-xs text-[#3498db] mt-1 font-medium">Multi-day event</span>}

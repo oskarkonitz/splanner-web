@@ -135,7 +135,7 @@ export default function GradesView({ onBack }) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#2b2b2b] text-white">
+    <div className="fixed inset-0 z-50 md:relative md:inset-auto md:z-auto flex flex-col h-full bg-[#2b2b2b] text-white">
       
       {/* HEADER */}
       <header className="flex flex-wrap items-center justify-between px-4 pb-4 pt-[calc(env(safe-area-inset-top)+1rem)] border-b border-gray-800 gap-4 shrink-0 bg-[#1c1c1e]">
@@ -146,7 +146,8 @@ export default function GradesView({ onBack }) {
           <h1 className="text-xl md:text-2xl font-bold">Grades</h1>
         </div>
 
-        <div className="flex items-center gap-3">
+        {/* Lista semestrów - ukryta na mobile gdy wybrany jest przedmiot */}
+        <div className={`items-center gap-3 ${selectedSubject ? 'hidden md:flex' : 'flex'}`}>
           <span className="text-sm text-gray-400 font-medium hidden md:block">Semester:</span>
           <select 
             value={selectedSemester} 
@@ -157,17 +158,37 @@ export default function GradesView({ onBack }) {
             {semesters?.map(sem => <option key={sem.id} value={sem.id}>{sem.name}</option>)}
           </select>
         </div>
+
+        {/* Przyciski akcji - widoczne TYLKO na mobile gdy wybrany jest przedmiot */}
+        {selectedSubject && (
+          <div className="flex items-center gap-2 md:hidden overflow-x-auto scrollbar-hide">
+            <button onClick={() => setShowModuleForm(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-sm font-medium transition-colors whitespace-nowrap">
+              <svg className="w-4 h-4 text-[#3498db]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"></path></svg>
+              Module
+            </button>
+            <button onClick={() => { setGradeToEdit(null); setShowGradeForm(true); }} disabled={gradeModules.filter(m => m.subject_id === selectedSubject.id).length === 0} className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 disabled:opacity-30 rounded-lg text-sm font-medium transition-colors whitespace-nowrap">
+              <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
+              Grade
+            </button>
+            <button onClick={() => setShowSimulator(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-[#f39c12]/10 hover:bg-[#f39c12]/20 text-[#f39c12] rounded-lg text-sm font-bold transition-colors whitespace-nowrap ml-auto">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+              Simulator
+            </button>
+          </div>
+        )}
       </header>
 
-      {/* COMPACT GPA CARD (Mobile) */}
-      <div className="md:hidden px-4 py-3 bg-[#1c1c1e] border-b border-gray-800 shrink-0">
-        <div className="bg-[#2b2b2b] rounded-2xl p-4 flex items-center justify-between shadow-sm border border-white/5">
-          <span className="font-bold text-gray-400">Overall GPA</span>
-          <span className={`text-3xl font-bold ${gpa ? (gpa >= 4.0 ? 'text-green-500' : (gpa >= 3.0 ? 'text-orange-400' : 'text-red-500')) : 'text-gray-500'}`}>
-            {gpa ? gpa.toFixed(2) : '--'}
-          </span>
+      {/* COMPACT GPA CARD (Mobile) - ukrywamy gdy włączony jest przedmiot */}
+      {!selectedSubject && (
+        <div className="md:hidden px-4 py-3 bg-[#1c1c1e] border-b border-gray-800 shrink-0">
+          <div className="bg-[#2b2b2b] rounded-2xl p-4 flex items-center justify-between shadow-sm border border-white/5">
+            <span className="font-bold text-gray-400">Overall GPA</span>
+            <span className={`text-3xl font-bold ${gpa ? (gpa >= 4.0 ? 'text-green-500' : (gpa >= 3.0 ? 'text-orange-400' : 'text-red-500')) : 'text-gray-500'}`}>
+              {gpa ? gpa.toFixed(2) : '--'}
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* MASTER-DETAIL */}
       <main className="flex-1 flex overflow-hidden">
@@ -182,7 +203,7 @@ export default function GradesView({ onBack }) {
             </span>
           </div>
 
-          <div className="p-4 space-y-2 pb-32">
+          <div className="p-4 space-y-2 pb-8">
             {filteredSubjects.length === 0 ? (
               <div className="p-6 text-center text-gray-500">No subjects in this semester.</div>
             ) : (
@@ -266,15 +287,15 @@ export default function GradesView({ onBack }) {
                   </div>
                 </div>
 
-                {/* PRZYCISKI AKCJI */}
-                <div className="p-4 flex gap-2 border-b border-gray-800 bg-[#1c1c1e] shrink-0 overflow-x-auto scrollbar-hide">
+                {/* PRZYCISKI AKCJI - widoczne tylko na komputerach, na mobilkach są w nagłówku */}
+                <div className="hidden md:flex p-4 gap-2 border-b border-gray-800 bg-[#1c1c1e] shrink-0 overflow-x-auto scrollbar-hide">
                   <button onClick={() => setShowModuleForm(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-sm font-medium transition-colors whitespace-nowrap">
                     <svg className="w-4 h-4 text-[#3498db]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"></path></svg>
-                    + Module
+                    Module
                   </button>
                   <button onClick={() => { setGradeToEdit(null); setShowGradeForm(true); }} disabled={subjectModules.length === 0} className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 disabled:opacity-30 rounded-lg text-sm font-medium transition-colors whitespace-nowrap">
                     <svg className="w-4 h-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
-                    + Grade
+                    Grade
                   </button>
                   <div className="w-px bg-gray-700 mx-1"></div>
                   <button onClick={() => setShowSimulator(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-[#f39c12]/10 hover:bg-[#f39c12]/20 text-[#f39c12] rounded-lg text-sm font-bold transition-colors whitespace-nowrap ml-auto">
@@ -284,7 +305,7 @@ export default function GradesView({ onBack }) {
                 </div>
 
                 {/* ZAWARTOŚĆ (MODUŁY) */}
-                <div className="flex-1 overflow-y-auto p-4 pb-32">
+                <div className="flex-1 overflow-y-auto p-4 pb-8">
                   <div className="max-w-3xl mx-auto space-y-6">
                     {subjectModules.length === 0 ? (
                       <div className="p-8 text-center border border-dashed border-gray-700 rounded-2xl">
