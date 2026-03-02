@@ -273,17 +273,17 @@ export default function PlanView({ onBack }) {
                               <div 
                                 key={`mob_ex_${exam.id}`} 
                                 onClick={(e) => handleContextMenu(e, exam, 'exam')}
-                                className="flex items-center justify-between p-3 bg-red-500/10 border border-red-500/20 rounded-xl cursor-pointer active:bg-red-500/20 transition-colors"
+                                className="flex items-start justify-between p-3 bg-red-500/10 border border-red-500/20 rounded-xl cursor-pointer active:bg-red-500/20 transition-colors"
                               >
                                 <div className="flex flex-col gap-0.5 min-w-0 pr-2">
                                   <div className="flex items-center gap-1.5">
                                     <svg className="w-4 h-4 text-red-500 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z" clipRule="evenodd"/></svg>
                                     <span className="font-bold text-red-500 text-xs">EXAM</span>
                                   </div>
-                                  <span className="font-semibold text-red-400 text-sm truncate">{exam.title} ({exam.subject})</span>
+                                  <span className="font-semibold text-red-400 text-sm break-words whitespace-normal">{exam.title} ({exam.subject})</span>
                                 </div>
                                 {exam.note && (
-                                  <span onClick={(e) => openNoteEditor(e, exam, 'exam')} className="text-[10px] text-red-300 bg-red-900/40 px-2 py-1 rounded-md shrink-0">
+                                  <span onClick={(e) => openNoteEditor(e, exam, 'exam')} className="text-[10px] text-red-300 bg-red-900/40 px-2 py-1 rounded-md shrink-0 mt-1">
                                     ✎ Note
                                   </span>
                                 )}
@@ -302,12 +302,12 @@ export default function PlanView({ onBack }) {
                                   key={`mob_top_${topic.id}`}
                                   draggable
                                   onDragStart={(e) => handleDragStart(e, topic)}
-                                  className={`flex items-center gap-3 p-3 bg-[#1c1c1e] border border-white/5 rounded-xl cursor-pointer transition-colors active:bg-white/5 ${isDone ? 'opacity-50' : ''}`}
+                                  className={`flex items-start gap-3 p-3 bg-[#1c1c1e] border border-white/5 rounded-xl cursor-pointer transition-colors active:bg-white/5 ${isDone ? 'opacity-50' : ''}`}
                                   onClick={(e) => handleContextMenu(e, topic, 'topic')}
                                 >
                                   {/* Checkbox (toggle status) */}
                                   <div 
-                                    className="shrink-0 py-1"
+                                    className="shrink-0 py-1 mt-0.5"
                                     onClick={(e) => { e.stopPropagation(); toggleTopicStatus(topic.id, topic.status); }}
                                   >
                                     <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${isDone ? 'bg-green-500 border-green-500' : 'border-gray-500'}`}>
@@ -316,16 +316,16 @@ export default function PlanView({ onBack }) {
                                   </div>
 
                                   {/* Tytuł i Przedmiot */}
-                                  <div className="flex flex-col flex-1 min-w-0 justify-center">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-[11px] font-bold uppercase tracking-wider truncate" style={{ color: subjectColor }}>
+                                  <div className="flex flex-col flex-1 min-w-0 justify-center gap-1">
+                                    <div className="flex items-start gap-2">
+                                      <span className="text-[11px] font-bold uppercase tracking-wider break-words whitespace-normal leading-tight" style={{ color: subjectColor }}>
                                         {exam?.subject || "Unknown"}
                                       </span>
                                       {topic.locked && (
-                                        <svg className="w-3 h-3 text-orange-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                                        <svg className="w-3 h-3 text-orange-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
                                       )}
                                     </div>
-                                    <span className={`text-sm font-medium truncate mt-0.5 ${isDone ? 'line-through text-gray-500' : 'text-gray-200'}`}>
+                                    <span className={`text-sm font-medium break-words whitespace-normal leading-snug ${isDone ? 'line-through text-gray-500' : 'text-gray-200'}`}>
                                       {topic.name}
                                     </span>
                                   </div>
@@ -334,7 +334,7 @@ export default function PlanView({ onBack }) {
                                   {topic.note && (
                                     <span 
                                       onClick={(e) => { e.stopPropagation(); openNoteEditor(e, topic, 'topic'); }} 
-                                      className="shrink-0 text-[10px] text-gray-400 bg-black/30 px-2 py-1 rounded-md"
+                                      className="shrink-0 text-[10px] text-gray-400 bg-black/30 px-2 py-1 rounded-md mt-1"
                                     >
                                       ✎ Note
                                     </span>
