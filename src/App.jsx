@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from './api/supabase'
 import SplashView from './views/SplashView'
 import LoginView from './views/LoginView'
@@ -8,6 +8,9 @@ import { DataProvider } from './context/DataContext'
 
 function App() {
   const [session, setSession] = useState(null)
+  
+  // Ref do śledzenia aktualnej sesji (zapobiega ponownemu splash screenowi przy przełączaniu kart)
+  const sessionRef = useRef(null)
   
   // Nowe stany do kontrolowania poprawnego "flow"
   const [isChecking, setIsChecking] = useState(true)
@@ -29,6 +32,7 @@ function App() {
     // Pierwsze sprawdzenie sesji przy uruchomieniu
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
+      sessionRef.current = session // Zapisujemy sesję do refa
       setIsChecking(false)
       
       // Pokazujemy splash TYLKO jeśli user jest już zalogowany 
@@ -40,7 +44,11 @@ function App() {
 
     // Nasłuchiwacz zmian stanu autoryzacji
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
+      // Sprawdzamy, czy to faktycznie NOWE logowanie (przejście z braku sesji)
+      const wasLoggedOut = !sessionRef.current;
+      
       setSession(newSession)
+      sessionRef.current = newSession // Aktualizujemy refa na bieżąco!
       
       if (event === 'PASSWORD_RECOVERY') {
         // Użytkownik wszedł z linku resetującego hasło
@@ -48,8 +56,8 @@ function App() {
         setShowSplash(false)
       } else if (event === 'SIGNED_IN') {
         // Użytkownik się zalogował (z LoginView).
-        // Sprawdzamy, czy to nie jest fałszywy alarm w trakcie recovery.
-        if (!checkRecovery() && !isRecoveryMode) {
+        // Sprawdzamy, czy to nowe logowanie i czy to nie jest fałszywy alarm w trakcie recovery.
+        if (wasLoggedOut && !checkRecovery() && !isRecoveryMode) {
           setShowSplash(true)
         }
       }
