@@ -3,6 +3,7 @@ import { useData } from '../context/DataContext'
 import ExamFormModal from '../components/ExamFormModal'
 import EventFormModal from '../components/EventFormModal'
 import SubjectFormModal from '../components/SubjectFormModal'
+import NoteEditorModal from '../components/NoteEditorModal' // DODANE
 
 const START_HOUR = 0;
 const END_HOUR = 24;
@@ -26,7 +27,8 @@ const getMonday = (d) => {
 export default function ScheduleView({ onBack }) {
   const { 
     subjects, scheduleEntries, exams, customEvents, cancellations, 
-    semesters, eventLists, deleteExam, deleteCustomEvent 
+    semesters, eventLists, deleteExam, deleteCustomEvent,
+    scheduleNotes, saveScheduleNote // DODANE - z Contextu
   } = useData();
 
   const [currentWeekMonday, setCurrentWeekMonday] = useState(() => getMonday(new Date()));
@@ -43,6 +45,9 @@ export default function ScheduleView({ onBack }) {
   const [showEventForm, setShowEventForm] = useState(false);
   const [showSubjectForm, setShowSubjectForm] = useState(false);
   const [formInitialData, setFormInitialData] = useState(null);
+  
+  // Stan Notatnika (DODANE)
+  const [noteModalData, setNoteModalData] = useState(null);
 
   const scrollRef = useRef(null);
 
@@ -71,6 +76,12 @@ export default function ScheduleView({ onBack }) {
     const weekStartStr = toDateString(weekDates[0]);
 
     const cancels = new Set((cancellations || []).map(c => `${c.entry_id}_${c.date}`));
+    
+    // DODANE: Mapa notatek dla szybkiego dostępu (entry_id + date)
+    const notesMap = (scheduleNotes || []).reduce((acc, n) => ({
+      ...acc,
+      [`${n.entry_id}_${n.date}`]: n.content
+    }), {});
 
     (scheduleEntries || []).forEach(entry => {
       const subject = subjectsCache[entry.subject_id];
@@ -102,6 +113,7 @@ export default function ScheduleView({ onBack }) {
         startTime: entry.start_time,
         endTime: entry.end_time,
         subtitle: [entry.type, entry.room ? `Room ${entry.room}` : ''].filter(Boolean).join(' • '),
+        note: notesMap[`${entry.id}_${entryDateStr}`], // DODANE - przypisanie notatki
         rawData: { entry, subject, dateStr: entryDateStr }
       });
     });
@@ -246,7 +258,7 @@ export default function ScheduleView({ onBack }) {
     });
 
     return result;
-  }, [subjects, scheduleEntries, exams, customEvents, cancellations, currentWeekMonday, weekDates, selectedSemesters, selectedLists]);
+  }, [subjects, scheduleEntries, exams, customEvents, cancellations, currentWeekMonday, weekDates, selectedSemesters, selectedLists, scheduleNotes]);
 
   const agendaItems = useMemo(() => {
     const selectedDayIdx = weekDates.findIndex(d => toDateString(d) === selectedDate);
@@ -312,12 +324,31 @@ export default function ScheduleView({ onBack }) {
     setSelectedDate(toDateString(today));
   };
 
+  // DODANE: Obsługa otwierania notatki
+  const handleOpenNote = (block) => {
+    setNoteModalData({
+      isOpen: true,
+      entryId: block.rawData.entry.id,
+      date: block.rawData.dateStr,
+      content: block.note || '',
+      title: `Note: ${block.title}`
+    });
+  };
+
+  // DODANE: Zapisywanie notatki
+  const onSaveNote = async (content) => {
+    if (!noteModalData) return;
+    await saveScheduleNote(noteModalData.entryId, noteModalData.date, content);
+    setNoteModalData(null);
+  };
+
   const handleBlockClick = (e, block) => {
     e.stopPropagation();
     
     let items = [];
     if (block.type === 'class') {
       items = [
+        { label: "Add / Edit Note", action: () => handleOpenNote(block) }, // DODANE: Opcja w menu
         { label: `Edit: ${block.rawData.subject.name}`, action: () => { setFormInitialData(block.rawData.subject); setShowSubjectForm(true); } },
         { label: "Cancel class (this week only)", action: () => alert("Cancel Class Placeholder"), destructive: true }
       ];
@@ -488,6 +519,16 @@ export default function ScheduleView({ onBack }) {
                         <span className="break-words line-clamp-2">{block.subtitle}</span>
                       </span>
                     )}
+
+                    {/* DODANE: Wyświetlanie notatki na mobile */}
+                    {block.note && (
+                      <div className="mt-2 p-2 bg-[#f1c40f]/10 border border-[#f1c40f]/20 rounded-lg">
+                        <span className="text-[11px] text-[#f1c40f] font-medium break-words whitespace-normal line-clamp-4 italic">
+                          "{block.note}"
+                        </span>
+                      </div>
+                    )}
+
                     {(block.isCutTop || block.isCutBottom) && <span className="text-xs text-[#3498db] mt-1 font-medium">Multi-day event</span>}
                   </div>
                 </div>
@@ -564,10 +605,40 @@ export default function ScheduleView({ onBack }) {
                         borderBottomRightRadius: block.isCutBottom ? '0' : undefined,
                       }}
                     >
-                      <span className="text-[10px] font-bold text-gray-900 dark:text-white leading-tight mb-0.5 line-clamp-2">{block.title}</span>
+                      <div className="flex justify-between items-start">
+                        <span className="text-[10px] font-bold text-gray-900 dark:text-white leading-tight mb-0.5 line-clamp-2">{block.title}</span>
+                        {/* ZMIANA: Usunięto statyczną żółtą ikonkę notatki z głównego widoku. Teraz notatka jest dostępna przez nową warstwę group/note. */}
+                      </div>
+
                       <span className="text-[9px] font-medium text-gray-800 dark:text-gray-300 leading-tight whitespace-pre-line">{block.timeStr}</span>
                       {block.subtitle && <span className="text-[9px] text-gray-700 dark:text-gray-400 truncate mt-0.5">{block.subtitle}</span>}
                       
+                      {/* DODANE: Rozwijana notatka (Desktop) - analogicznie do wykrzyknika */}
+                      {block.note && (
+                        <div className="absolute inset-0 z-20 pointer-events-none group/note">
+                          <div 
+                            onClick={(e) => { e.stopPropagation(); handleOpenNote(block); }}
+                            className="absolute bottom-1 right-1 w-5 h-5 bg-[#f1c40f] rounded border border-white flex items-center justify-center shadow-md transition-all duration-300 ease-in-out cursor-pointer pointer-events-auto group-hover/note:opacity-0 group-hover/note:scale-50"
+                          >
+                            <svg className="w-3 h-3 text-black" fill="currentColor" viewBox="0 0 20 20">
+                              <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/>
+                            </svg>
+                          </div>
+
+                          <div 
+                            onClick={(e) => { e.stopPropagation(); handleOpenNote(block); }}
+                            className="absolute bottom-1 right-1 w-5 h-5 opacity-0 rounded-md border-l-4 border-yellow-600 bg-[#f1c40f] shadow-lg flex flex-col overflow-hidden pointer-events-none transition-all duration-300 ease-out group-hover/note:bottom-0 group-hover/note:right-0 group-hover/note:w-full group-hover/note:h-full group-hover/note:opacity-100 group-hover/note:pointer-events-auto p-1.5"
+                          >
+                            <div className="w-full h-full flex flex-col">
+                              <span className="text-[10px] font-bold text-black mb-1 shrink-0">Note:</span>
+                              <span className="text-[9px] font-medium text-black/80 leading-tight whitespace-pre-line italic overflow-y-auto pr-1 scrollbar-hide">
+                                {block.note}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       {block.associatedExam && (
                         <div className="absolute inset-0 z-20 pointer-events-none group/exam">
                           <div 
@@ -647,6 +718,15 @@ export default function ScheduleView({ onBack }) {
         isOpen={showSubjectForm} 
         initialData={formInitialData} 
         onClose={() => setShowSubjectForm(false)} 
+      />
+      
+      {/* DODANE: Modal Notatnika */}
+      <NoteEditorModal 
+        isOpen={noteModalData?.isOpen} 
+        initialNote={noteModalData?.content} 
+        title={noteModalData?.title}
+        onClose={() => setNoteModalData(null)}
+        onSave={onSaveNote}
       />
 
     </div>

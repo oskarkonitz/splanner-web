@@ -22,6 +22,7 @@ export function DataProvider({ children, session }) {
   const [subjects, setSubjects] = useState([]);
   const [scheduleEntries, setScheduleEntries] = useState([]);
   const [cancellations, setCancellations] = useState([]);
+  const [scheduleNotes, setScheduleNotes] = useState([]); // NOWA TABELA
   const [customEvents, setCustomEvents] = useState([]);
   const [eventLists, setEventLists] = useState([]);
   const [semesters, setSemesters] = useState([]);
@@ -30,7 +31,6 @@ export function DataProvider({ children, session }) {
   const [blockedDates, setBlockedDates] = useState([]);
   const [subscriptions, setSubscriptions] = useState([]); 
   
-  // --- SYSTEM OSIĄGNIĘĆ ---
   const [achievements, setAchievements] = useState([]); 
   const [popupQueue, setPopupQueue] = useState([]); 
 
@@ -45,8 +45,9 @@ export function DataProvider({ children, session }) {
     try {
       const [
         tasksRes, taskListsRes, topicsRes, examsRes, statsRes, 
-        settingsRes, // <--- POBIERANIE USTAWIEŃ
+        settingsRes, 
         subjectsRes, scheduleRes, cancellationsRes, 
+        notesRes, // NOWE POBIERANIE
         customEventsRes, eventListsRes, semestersRes,
         gradeModulesRes, gradesRes, blockedRes, subscriptionsRes,
         achievementsRes 
@@ -56,10 +57,11 @@ export function DataProvider({ children, session }) {
         supabase.from('topics').select('*'),
         supabase.from('exams').select('*'),
         supabase.from('global_stats').select('*'),
-        supabase.from('settings').select('*'), // <--- ZAPYTANIE O USTAWIENIA
+        supabase.from('settings').select('*'),
         supabase.from('subjects').select('*'),
         supabase.from('schedule_entries').select('*'),
         supabase.from('schedule_cancellations').select('*'),
+        supabase.from('schedule_notes').select('*'), // POBIERANIE NOTATEK
         supabase.from('custom_events').select('*'),
         supabase.from('event_lists').select('*'),
         supabase.from('semesters').select('*'),
@@ -76,7 +78,6 @@ export function DataProvider({ children, session }) {
       if (examsRes.data) setExams(examsRes.data);
       if (statsRes.data) setGlobalStats(statsRes.data);
       
-      // Mapowanie ustawień na płaski obiekt key: value
       if (settingsRes.data) {
         const settingsObj = {};
         settingsRes.data.forEach(item => {
@@ -90,6 +91,7 @@ export function DataProvider({ children, session }) {
       if (subjectsRes.data) setSubjects(subjectsRes.data);
       if (scheduleRes.data) setScheduleEntries(scheduleRes.data);
       if (cancellationsRes.data) setCancellations(cancellationsRes.data);
+      if (notesRes.data) setScheduleNotes(notesRes.data); // ZAPISANIE NOTATEK DO STANU
       if (customEventsRes.data) setCustomEvents(customEventsRes.data);
       if (eventListsRes.data) setEventLists(eventListsRes.data);
       if (semestersRes.data) setSemesters(semestersRes.data);
@@ -118,6 +120,33 @@ export function DataProvider({ children, session }) {
     }
   };
 
+  // --- LOGIKA NOTATEK W PLANIE ZAJĘĆ ---
+  const saveScheduleNote = async (entryId, date, content) => {
+    try {
+      // Szukamy czy notatka dla tej pary (entry+data) już istnieje
+      const existingNote = scheduleNotes.find(n => n.entry_id === entryId && n.date === date);
+      
+      if (!content.trim()) {
+        // Jeśli treść jest pusta, usuwamy notatkę z bazy (opcjonalne, zależnie od preferencji)
+        if (existingNote) {
+          await supabase.from('schedule_notes').delete().eq('id', existingNote.id);
+        }
+      } else {
+        const payload = {
+          id: existingNote ? existingNote.id : generateId('note'),
+          entry_id: entryId,
+          date: date,
+          content: content,
+          user_id: session?.user?.id
+        };
+        await supabase.from('schedule_notes').upsert(payload);
+      }
+      await fetchDashboardData();
+    } catch (error) {
+      console.error("Błąd zapisu notatki planu:", error);
+    }
+  };
+
   // --- ENGINE OSIĄGNIĘĆ ---
   const saveAchievement = async (id) => {
     try {
@@ -131,14 +160,12 @@ export function DataProvider({ children, session }) {
   useEffect(() => {
     if (isLoading) return;
     
-    // Ewaluacja wszystkich Osiągnięć z pliku logicznego
     const newlyUnlocked = evaluateAchievements({ 
       topics, exams, subjects, grades, gradeModules, blockedDates, globalStats, dailyTasks 
     }, achievements);
     
     newlyUnlocked.forEach(id => saveAchievement(id));
 
-    // Sprawdzanie "All Tasks Done Today"
     const today = new Date().toISOString().split('T')[0];
     const todayTasks = dailyTasks.filter(t => t.date === today);
     
@@ -153,13 +180,10 @@ export function DataProvider({ children, session }) {
     }
   }, [dailyTasks, topics, exams, subjects, grades, gradeModules, blockedDates, globalStats, isLoading]);
 
-  // --- ZAPISYWANIE USTAWIENIA (POJEDYNCZY KLUCZ) ---
   const updateSetting = async (key, value) => {
     try {
       const valToSave = typeof value === 'object' ? JSON.stringify(value) : value;
       await supabase.from('settings').upsert({ key: key, value: valToSave });
-      
-      // Optymistyczna aktualizacja lokalnego stanu
       setSettings(prev => ({ ...prev, [key]: value }));
     } catch (error) {
       console.error("Błąd aktualizacji ustawienia:", error);
@@ -675,20 +699,20 @@ export function DataProvider({ children, session }) {
   return (
     <DataContext.Provider value={{ 
       isLoading, dailyTasks, taskLists, topics, exams, globalStats,
-      subjects, scheduleEntries, cancellations, customEvents,
-      eventLists, semesters, gradeModules, grades,
+      subjects, scheduleEntries, cancellations, scheduleNotes, // UDOSTĘPNIONE NOTATKI
+      customEvents, eventLists, semesters, gradeModules, grades,
       subscriptions, achievements, 
-      settings, // <--- UDOSTĘPNIANIE USTAWEŃ
-      updateSetting, // <--- UDOSTĘPNIANIE FUNKCJI AKTUALIZACJI
+      settings,
+      updateSetting,
       fetchDashboardData, saveExam, deleteExam, saveCustomEvent, deleteCustomEvent, saveSubject,
       toggleTopicStatus, saveExamNote, saveTopic, deleteTopic, runPlanner,
       saveTask, deleteTask, toggleTaskStatus, sweepCompletedTasks, saveTaskList, deleteTaskList,
       deleteSubject, saveSemester, deleteSemester, setCurrentSemester,
       saveGradeModule, deleteGradeModule, saveGrade, deleteGrade,
-      saveSubscription, deleteSubscription 
+      saveSubscription, deleteSubscription,
+      saveScheduleNote // UDOSTĘPNIONA FUNKCJA ZAPISU
     }}>
       {children}
-      {/* GLOBALNE POPUPY */}
       <GlobalPopups popupData={popupQueue[0]} onClose={() => setPopupQueue(prev => prev.slice(1))} />
     </DataContext.Provider>
   );
