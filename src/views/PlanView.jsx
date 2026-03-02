@@ -41,21 +41,50 @@ export default function PlanView({ onBack }) {
 
   const groupedPlan = useMemo(() => {
     const datesSet = new Set();
+    const overdue = [];
     
-    topics.forEach(t => { if (t.scheduled_date) datesSet.add(t.scheduled_date); });
-    exams.forEach(e => { if (e.date) datesSet.add(e.date); });
+    // Filtrowanie i rozdzielanie zaległych od nadchodzących
+    topics.forEach(t => { 
+      if (t.scheduled_date) {
+        if (t.scheduled_date < todayStr && t.status !== 'done') {
+          overdue.push(t);
+        } else if (t.scheduled_date >= todayStr) {
+          datesSet.add(t.scheduled_date); 
+        }
+      }
+    });
 
-    const validDates = Array.from(datesSet)
-      .filter(d => d >= todayStr)
-      .sort((a, b) => a.localeCompare(b));
+    exams.forEach(e => { 
+      if (e.date && e.date >= todayStr) {
+        datesSet.add(e.date); 
+      }
+    });
 
-    return validDates.map(date => ({
+    const validDates = Array.from(datesSet).sort((a, b) => a.localeCompare(b));
+
+    const upcomingPlan = validDates.map(date => ({
       id: date,
       date: date,
       isToday: date === todayStr,
+      isOverdue: false,
       topics: topics.filter(t => t.scheduled_date === date),
       exams: exams.filter(e => e.date === date)
     }));
+
+    // Jeśli są zaległe zadania, dodajemy je na początek listy jako blok "Overdue"
+    if (overdue.length > 0) {
+      overdue.sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date));
+      upcomingPlan.unshift({
+        id: 'overdue',
+        date: 'Overdue',
+        isToday: false,
+        isOverdue: true,
+        topics: overdue,
+        exams: []
+      });
+    }
+
+    return upcomingPlan;
   }, [topics, exams, todayStr]);
 
   useEffect(() => {
@@ -233,21 +262,21 @@ export default function PlanView({ onBack }) {
             {/* ---------------------------------------------------- */}
             <div className="md:hidden max-w-4xl mx-auto px-4 pt-6 pb-10">
               {groupedPlan.map((plan, index) => {
-                const isHovered = draggedOverDate === plan.date;
+                const isHovered = draggedOverDate === plan.date && !plan.isOverdue;
                 const isLast = index === groupedPlan.length - 1;
                 
                 return (
                   <div 
                     key={`mob_${plan.id}`} 
                     className="flex relative pb-8 group"
-                    onDragOver={(e) => handleDragOver(e, plan.date)}
+                    onDragOver={(e) => !plan.isOverdue && handleDragOver(e, plan.date)}
                     onDragLeave={handleDragLeave}
-                    onDrop={(e) => handleDrop(e, plan.date)}
+                    onDrop={(e) => !plan.isOverdue && handleDrop(e, plan.date)}
                   >
                     
                     {/* Linia i Kropka (Oś czasu) */}
                     <div className="w-12 shrink-0 flex flex-col items-center relative">
-                      <div className={`w-3.5 h-3.5 rounded-full z-10 mt-1.5 transition-colors ${plan.isToday ? 'bg-[#3498db] ring-4 ring-[#3498db]/20' : 'bg-gray-600'}`}></div>
+                      <div className={`w-3.5 h-3.5 rounded-full z-10 mt-1.5 transition-colors ${plan.isToday ? 'bg-[#3498db] ring-4 ring-[#3498db]/20' : (plan.isOverdue ? 'bg-red-500 ring-4 ring-red-500/20' : 'bg-gray-600')}`}></div>
                       {!isLast && <div className="absolute top-3 bottom-[-2rem] w-px bg-gray-800"></div>}
                     </div>
 
@@ -255,12 +284,14 @@ export default function PlanView({ onBack }) {
                     <div className={`flex-1 min-w-0 transition-all duration-200 ${isHovered ? 'bg-[#3498db]/10 rounded-xl p-2 -m-2' : ''}`}>
                       
                       <div className="mb-3 flex items-baseline gap-2">
-                        <span className={`font-bold text-lg ${plan.isToday ? 'text-[#3498db]' : 'text-gray-200'}`}>
+                        <span className={`font-bold text-lg ${plan.isToday ? 'text-[#3498db]' : (plan.isOverdue ? 'text-red-500' : 'text-gray-200')}`}>
                           {plan.isToday ? 'Today' : plan.date}
                         </span>
-                        <span className="text-xs text-gray-500 font-medium break-words">
-                          {plan.isToday ? plan.date : getDaysStatus(plan.date)}
-                        </span>
+                        {!plan.isOverdue && (
+                          <span className="text-xs text-gray-500 font-medium break-words">
+                            {plan.isToday ? plan.date : getDaysStatus(plan.date)}
+                          </span>
+                        )}
                       </div>
 
                       <div className="space-y-2">
@@ -318,9 +349,14 @@ export default function PlanView({ onBack }) {
                                   {/* Tytuł i Przedmiot */}
                                   <div className="flex flex-col flex-1 min-w-0 justify-center gap-1">
                                     <div className="flex items-start gap-2">
-                                      <span className="text-[11px] font-bold uppercase tracking-wider break-words whitespace-normal leading-tight" style={{ color: subjectColor }}>
+                                      <span className="text-[11px] font-bold uppercase tracking-wider break-words whitespace-normal leading-tight flex items-center gap-1.5" style={{ color: subjectColor }}>
                                         {exam?.subject || "Unknown"}
                                       </span>
+                                      {plan.isOverdue && (
+                                        <span className="text-[9px] text-red-400 font-bold bg-red-500/10 px-1.5 py-0.5 rounded shrink-0">
+                                          {topic.scheduled_date}
+                                        </span>
+                                      )}
                                       {topic.locked && (
                                         <svg className="w-3 h-3 text-orange-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
                                       )}
@@ -356,29 +392,31 @@ export default function PlanView({ onBack }) {
             {/* ---------------------------------------------------- */}
             <div className="hidden md:block max-w-5xl mx-auto pt-6 px-6">
               {groupedPlan.map(plan => {
-                const isHovered = draggedOverDate === plan.date;
+                const isHovered = draggedOverDate === plan.date && !plan.isOverdue;
 
                 return (
                   <div key={`desk_${plan.id}`} className="flex group">
                     
-                    {/* LEWA KOLUMNA: Oś czasu i data (Poszerzona do w-40, dodano break-words) */}
+                    {/* LEWA KOLUMNA: Oś czasu i data */}
                     <div className="w-40 shrink-0 border-r-2 border-gray-700 relative py-4 pr-6 text-right break-words">
-                      <div className={`absolute right-[-9px] top-6 w-4 h-4 rounded-full border-4 transition-colors ${plan.isToday ? 'bg-[#3498db] border-[#3498db]' : 'bg-[#1c1c1e] border-gray-600 group-hover:border-gray-400'}`}></div>
+                      <div className={`absolute right-[-9px] top-6 w-4 h-4 rounded-full border-4 transition-colors ${plan.isToday ? 'bg-[#3498db] border-[#3498db]' : (plan.isOverdue ? 'bg-[#1c1c1e] border-red-500 group-hover:border-red-400' : 'bg-[#1c1c1e] border-gray-600 group-hover:border-gray-400')}`}></div>
                       
-                      <div className={`text-lg font-bold leading-tight ${plan.isToday ? 'text-[#3498db]' : 'text-gray-200'}`}>
+                      <div className={`text-lg font-bold leading-tight ${plan.isToday ? 'text-[#3498db]' : (plan.isOverdue ? 'text-red-500' : 'text-gray-200')}`}>
                         {plan.date}
                       </div>
-                      <div className={`text-sm font-medium mt-1 leading-tight ${plan.isToday ? 'text-[#3498db]' : 'text-gray-500'}`}>
-                        {getDaysStatus(plan.date)}
-                      </div>
+                      {!plan.isOverdue && (
+                        <div className={`text-sm font-medium mt-1 leading-tight ${plan.isToday ? 'text-[#3498db]' : 'text-gray-500'}`}>
+                          {getDaysStatus(plan.date)}
+                        </div>
+                      )}
                     </div>
 
                     {/* PRAWA KOLUMNA: Obszar zrzutu (Dropzone) */}
                     <div 
                       className={`flex-1 py-4 pl-8 mb-6 rounded-2xl transition-colors duration-200 min-h-[60px] ${isHovered ? 'bg-[#3498db]/10 border border-[#3498db]/30' : ''}`}
-                      onDragOver={(e) => handleDragOver(e, plan.date)}
+                      onDragOver={(e) => !plan.isOverdue && handleDragOver(e, plan.date)}
                       onDragLeave={handleDragLeave}
-                      onDrop={(e) => handleDrop(e, plan.date)}
+                      onDrop={(e) => !plan.isOverdue && handleDrop(e, plan.date)}
                     >
                       {plan.topics.length === 0 && plan.exams.length === 0 ? (
                         <div className="text-gray-500 italic mt-2 opacity-50">Drop topics here...</div>
@@ -431,8 +469,13 @@ export default function PlanView({ onBack }) {
                                     {isDone && <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"></path></svg>}
                                   </div>
                                   
-                                  <div className="w-48 lg:w-64 font-bold truncate text-sm" style={{ color: subjectColor }}>
-                                    {exam?.subject || "Unknown"}
+                                  <div className="w-48 lg:w-64 font-bold truncate text-sm flex items-center gap-2" style={{ color: subjectColor }}>
+                                    <span className="truncate">{exam?.subject || "Unknown"}</span>
+                                    {plan.isOverdue && (
+                                      <span className="text-[9px] text-red-400 font-bold bg-red-500/10 px-1.5 py-0.5 rounded shrink-0">
+                                        {topic.scheduled_date}
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
 

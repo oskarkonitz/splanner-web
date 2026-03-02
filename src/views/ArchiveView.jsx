@@ -271,34 +271,36 @@ export default function ArchiveView({ onBack }) {
                         {currentTopics.map((topic, idx) => (
                           <div 
                             key={topic.id}
-                            className={`w-full flex items-center justify-between p-4 text-left transition-colors border-b border-gray-800 last:border-0 hover:bg-white/5 ${topic.status === 'done' ? 'bg-[#2b2b2b]/50' : ''}`}
+                            className={`w-full flex items-center p-4 text-left transition-colors border-b border-gray-800 last:border-0 hover:bg-white/5 ${topic.status === 'done' ? 'bg-[#2b2b2b]/50' : ''}`}
                           >
+                            {/* KÓŁKO STATUSU - Z e.stopPropagation() */}
                             <div 
-                              className="flex items-center gap-4 flex-1 cursor-pointer"
-                              onClick={() => toggleTopicStatus(topic.id, topic.status)}
+                              className={`w-6 h-6 shrink-0 rounded-full border-2 flex items-center justify-center cursor-pointer transition-colors ${topic.status === 'done' ? 'bg-green-500 border-green-500' : 'border-gray-500 hover:border-gray-400'}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleTopicStatus(topic.id, topic.status);
+                              }}
                             >
-                              <div className={`w-6 h-6 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors ${topic.status === 'done' ? 'bg-green-500 border-green-500' : 'border-gray-500'}`}>
-                                {topic.status === 'done' && <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"></path></svg>}
-                              </div>
-                              <div className="flex-1">
-                                <span className={`text-base font-medium transition-all ${topic.status === 'done' ? 'text-gray-500 line-through' : 'text-gray-200'}`}>
-                                  {idx + 1}. {topic.name}
-                                </span>
-                              </div>
+                              {topic.status === 'done' && <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"></path></svg>}
                             </div>
 
-                            <div className="flex items-center gap-3 shrink-0 ml-4">
-                              {topic.scheduled_date && (
-                                <span className="text-xs font-bold text-gray-500 bg-black/20 px-2 py-1 rounded-md">
-                                  {topic.scheduled_date}
-                                </span>
-                              )}
-                              <button 
-                                onClick={() => { setTopicToEdit(topic); setShowTopicForm(true); }}
-                                className="p-2 text-gray-500 hover:text-[#3498db] transition-colors bg-white/5 rounded-xl hover:bg-white/10"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                              </button>
+                            {/* TEKST I IKONKA EDYCJI - KLIKNIĘCIE OTWIERA MODAL */}
+                            <div 
+                              className="flex items-center justify-between flex-1 ml-4 cursor-pointer"
+                              onClick={() => { setTopicToEdit(topic); setShowTopicForm(true); }}
+                            >
+                              <span className={`text-base font-medium transition-all ${topic.status === 'done' ? 'text-gray-500 line-through' : 'text-gray-200'}`}>
+                                {idx + 1}. {topic.name}
+                              </span>
+
+                              <div className="flex items-center gap-3 shrink-0 ml-4 pointer-events-none">
+                                {topic.scheduled_date && (
+                                  <span className="text-xs font-bold text-gray-500 bg-black/20 px-2 py-1 rounded-md">
+                                    {topic.scheduled_date}
+                                  </span>
+                                )}
+                                <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                              </div>
                             </div>
                           </div>
                         ))}

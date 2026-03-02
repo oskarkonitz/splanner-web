@@ -292,6 +292,12 @@ export default function ScheduleView({ onBack }) {
   const currentDayIdx = (now.getDay() + 6) % 7;
   const currentHourVal = now.getHours() + now.getMinutes() / 60.0;
 
+  // Logika dla 'Now' i 'Next'
+  const isSelectedDateToday = selectedDate === todayStr;
+  const nextBlockId = isSelectedDateToday 
+    ? agendaItems.find(b => b.startVal > currentHourVal)?.id 
+    : null;
+
   const prevWeek = () => { 
     const d = new Date(currentWeekMonday); d.setDate(d.getDate() - 7); setCurrentWeekMonday(d); 
     const sd = new Date(selectedDate); sd.setDate(sd.getDate() - 7); setSelectedDate(toDateString(sd));
@@ -332,7 +338,6 @@ export default function ScheduleView({ onBack }) {
     }
 
     setContextMenu({
-      // ZMIANA: Zwiększony margines, aby menu nigdy nie wychodziło poza krawędź ekranu
       x: Math.min(e.clientX, window.innerWidth - 240),
       y: Math.min(e.clientY, window.innerHeight - 150),
       items
@@ -348,7 +353,6 @@ export default function ScheduleView({ onBack }) {
   return (
     <div className="flex flex-col h-full bg-[#2b2b2b] text-white">
       
-      {/* ZMIANA: Dodano pt-[calc(env(safe-area-inset-top)+1rem)] na notcha oraz zmniejszono gap-4 na gap-2 sm:gap-4 dla małych ekranów */}
       <header className="flex flex-wrap items-center justify-between p-4 pt-[calc(env(safe-area-inset-top)+1rem)] border-b border-gray-800 gap-2 sm:gap-4 shrink-0">
         <div className="flex items-center gap-2 sm:gap-4 min-w-0">
           <h1 className="text-xl md:text-3xl font-bold hidden md:block truncate">Schedule</h1>
@@ -382,7 +386,6 @@ export default function ScheduleView({ onBack }) {
           </div>
         </div>
 
-        {/* ZMIANA: Optymalizacja prawej sekcji nagłówka pod małe ekrany */}
         <div className="flex items-center gap-1 sm:gap-2 shrink-0 ml-auto">
           <button 
             onClick={() => { setFormInitialData(null); setShowEventForm(true); }} 
@@ -408,7 +411,6 @@ export default function ScheduleView({ onBack }) {
       </header>
 
       <div className="md:hidden flex flex-col flex-1 overflow-hidden bg-[#121212]">
-        {/* ZMIANA: Użycie flex-1 na elementach dni zamiast sztywnych szerokości, zapobiega to scrollowi/ucinaniu */}
         <div className="flex justify-between sm:justify-start overflow-x-auto gap-1 sm:gap-3 px-2 sm:px-4 py-2 sm:py-3 bg-[#1c1c1e] border-b border-gray-800 scrollbar-hide shrink-0">
           {weekDates.map((date, i) => {
             const dateStr = toDateString(date);
@@ -436,36 +438,61 @@ export default function ScheduleView({ onBack }) {
               <span className="text-gray-400 font-medium">No schedule for today.</span>
             </div>
           ) : (
-            agendaItems.map(block => (
-              <div 
-                key={block.id} 
-                onClick={(e) => handleBlockClick(e, block)}
-                className={`relative bg-[#1c1c1e] rounded-xl overflow-hidden shadow-sm active:scale-[0.98] transition-transform p-4 flex gap-4 h-auto ${block.type === 'exam' ? 'border border-red-500/30 bg-red-500/5' : ''}`}
-              >
-                <div className="absolute left-0 top-0 bottom-0 w-1.5" style={{ backgroundColor: block.color }}></div>
-                <div className="w-14 sm:w-16 flex-shrink-0 flex flex-col text-right justify-start mt-0.5">
-                  <span className={`text-sm font-bold ${block.type === 'exam' ? 'text-red-500' : 'text-white'}`}>{block.startTime}</span>
-                  {block.endTime && <span className="text-xs text-gray-500 font-medium">{block.endTime}</span>}
-                </div>
-                <div className="w-px bg-gray-800"></div>
-                <div className="flex-1 flex flex-col justify-center min-w-0">
-                  {block.type === 'exam' && <span className="text-[10px] font-bold text-red-500 mb-0.5">{block.subtitle}</span>}
-                  
-                  {/* ZMIANA: Usunięto 'truncate' na rzecz zawijania wierszy. Ograniczam do 2/3 linii by nie robiło się zbyt długie */}
-                  <span className="font-bold text-white text-base leading-tight mb-1 line-clamp-3 break-words whitespace-normal">
-                    {block.title}
-                  </span>
-                  
-                  {block.type !== 'exam' && block.subtitle && (
-                    <span className="text-xs text-gray-400 flex items-start gap-1.5 mt-0.5 leading-tight">
-                      {block.type === 'class' && <svg className="w-3.5 h-3.5 shrink-0 mt-px" fill="currentColor" viewBox="0 0 20 20"><path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.838L7.667 9.088l1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.838l-7-3zM3.31 8.56l-1.222.524a1 1 0 000 1.838l7 3a1 1 0 00.788 0l7-3a1 1 0 000-1.838H16.8l-6.4 2.743a1 1 0 01-.8 0L3.31 8.56z"/></svg>}
-                      <span className="break-words line-clamp-2">{block.subtitle}</span>
+            agendaItems.map(block => {
+              const isNow = isSelectedDateToday && block.startVal <= currentHourVal && (block.startVal + block.duration) > currentHourVal;
+              const isNext = block.id === nextBlockId;
+
+              return (
+                <div 
+                  key={block.id} 
+                  onClick={(e) => handleBlockClick(e, block)}
+                  className={`relative bg-[#1c1c1e] rounded-xl overflow-hidden shadow-sm active:scale-[0.98] transition-transform p-4 flex gap-4 h-auto ${block.type === 'exam' ? 'border border-red-500/30 bg-red-500/5' : ''}`}
+                >
+                  <div className="absolute left-0 top-0 bottom-0 w-1.5" style={{ backgroundColor: block.color }}></div>
+                  <div className="w-14 sm:w-16 flex-shrink-0 flex flex-col text-right justify-start mt-0.5">
+                    <span className={`text-sm font-bold ${block.type === 'exam' ? 'text-red-500' : 'text-white'}`}>{block.startTime}</span>
+                    {block.endTime && <span className="text-xs text-gray-500 font-medium">{block.endTime}</span>}
+                  </div>
+                  <div className="w-px bg-gray-800"></div>
+                  <div className="flex-1 flex flex-col justify-center min-w-0">
+                    
+                    {/* Wskaźnik NOW */}
+                    {isNow && (
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                        </span>
+                        <span className="text-[10px] font-bold text-green-500 uppercase tracking-wider">Now</span>
+                      </div>
+                    )}
+
+                    {/* Wskaźnik NEXT */}
+                    {isNext && (
+                      <div className="mb-1.5">
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#3498db]/20 text-[#3498db] border border-[#3498db]/30 uppercase tracking-wider">
+                          Next
+                        </span>
+                      </div>
+                    )}
+
+                    {block.type === 'exam' && <span className="text-[10px] font-bold text-red-500 mb-0.5">{block.subtitle}</span>}
+                    
+                    <span className="font-bold text-white text-base leading-tight mb-1 line-clamp-3 break-words whitespace-normal">
+                      {block.title}
                     </span>
-                  )}
-                  {(block.isCutTop || block.isCutBottom) && <span className="text-xs text-[#3498db] mt-1 font-medium">Multi-day event</span>}
+                    
+                    {block.type !== 'exam' && block.subtitle && (
+                      <span className="text-xs text-gray-400 flex items-start gap-1.5 mt-0.5 leading-tight">
+                        {block.type === 'class' && <svg className="w-3.5 h-3.5 shrink-0 mt-px" fill="currentColor" viewBox="0 0 20 20"><path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.838L7.667 9.088l1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.838l-7-3zM3.31 8.56l-1.222.524a1 1 0 000 1.838l7 3a1 1 0 00.788 0l7-3a1 1 0 000-1.838H16.8l-6.4 2.743a1 1 0 01-.8 0L3.31 8.56z"/></svg>}
+                        <span className="break-words line-clamp-2">{block.subtitle}</span>
+                      </span>
+                    )}
+                    {(block.isCutTop || block.isCutBottom) && <span className="text-xs text-[#3498db] mt-1 font-medium">Multi-day event</span>}
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>

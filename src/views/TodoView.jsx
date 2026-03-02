@@ -9,17 +9,14 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
   } = useData();
 
   // --- STANY GŁÓWNE ---
-  // Inicjujemy na podstawie przekazanego initialListId
   const [activeListId, setActiveListId] = useState(initialListId);
   
-  // Jeśli initialListId się zmieni z zewnątrz, aktualizujemy widok
   useEffect(() => {
     if (initialListId) {
       setActiveListId(initialListId);
     }
   }, [initialListId]);
   
-  // Pasek Quick Add / Edit
   const [quickAddText, setQuickAddText] = useState('');
   const [quickDate, setQuickDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [quickColor, setQuickColor] = useState('#3498db');
@@ -28,20 +25,18 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
   
   const inputRef = useRef(null);
 
-  // Formularz nowej Listy
   const [showListForm, setShowListForm] = useState(false);
   const [listFormName, setListFormName] = useState('');
   const [listFormType, setListFormType] = useState('');
 
-  // Menu Kontekstowe & Notatnik
   const [contextMenu, setContextMenu] = useState(null);
   const [noteModalData, setNoteModalData] = useState(null);
 
-  // Menu Mobilne Wyboru Listy
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
-  // Drag & Drop (Listy)
-  const [draggedOverList, setDraggedOverList] = useState(null);
+  // Drag & Drop
+  const [draggedOverList, setDraggedOverList] = useState(null); // Dla bocznego menu
+  const [draggedOverDate, setDraggedOverDate] = useState(null); // Dla głównego okna dat (jak w PlanView)
 
   // --- HELPERS ---
   const todayStr = useMemo(() => {
@@ -60,7 +55,6 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
     if (isShoppingList) setShowDateInput(false);
   }, [isShoppingList]);
 
-  // Globalne zamykanie menu
   useEffect(() => {
     const closeMenu = () => {
       setContextMenu(null);
@@ -91,9 +85,7 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
       if (!matchesList) return false;
       if (isShoppingList) return true;
       
-      // Ukrywamy wykonane zadania bez daty w standardowych listach
       if (task.status === 'done' && !tDate) return false;
-      
       if (task.status === 'done' && tDate && tDate < todayStr) return false;
 
       return true;
@@ -157,8 +149,6 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
     return { overdue, upcoming };
   }, [filteredTasks, isShoppingList, todayStr, activeListId, taskLists]);
 
-
-  // --- AKCJE EDYCJI I DODAWANIA (Z Paska na górze) ---
   const handleEditTask = (task) => {
     setEditingTask(task);
     setQuickAddText(task.content);
@@ -215,7 +205,6 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
     }
   };
 
-  // --- NOTATKI ---
   const openNoteEditor = (e, task) => {
     e.stopPropagation();
     setNoteModalData({
@@ -232,7 +221,6 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
     await saveTask({ ...noteModalData.task, note: newNote }, true);
   };
 
-  // --- LISTY I DRAG&DROP ---
   const handleSaveList = async () => {
     if (!listFormName) return;
     await saveTaskList({ name: listFormName, list_type: listFormType });
@@ -259,12 +247,49 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
     setContextMenu(null);
   };
 
-  const onDragStart = (e, task) => {
+  // --- DRAG & DROP LOGIC ---
+  const handleDragStart = (e, task) => {
     e.dataTransfer.setData('taskId', task.id);
     e.dataTransfer.effectAllowed = 'move';
   };
-  const onDragOverList = (e, listId) => { e.preventDefault(); setDraggedOverList(listId); };
-  const onDragLeaveList = (e) => { e.preventDefault(); setDraggedOverList(null); };
+
+  // Drag over daty na liście głównej (tak jak w PlanView)
+  const handleDragOverDate = (e, dateVal) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (draggedOverDate !== dateVal) setDraggedOverDate(dateVal);
+  };
+
+  const handleDragLeaveDate = (e) => {
+    e.preventDefault();
+    setDraggedOverDate(null);
+  };
+
+  const handleDropDate = async (e, dateVal) => {
+    e.preventDefault();
+    setDraggedOverDate(null);
+    const taskId = e.dataTransfer.getData('taskId');
+    if (!taskId) return;
+    const task = dailyTasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    if (task.date !== dateVal) {
+      await saveTask({ ...task, date: dateVal }, true);
+    }
+  };
+
+  // Drag over boczne menu list
+  const onDragOverList = (e, listId) => { 
+    e.preventDefault(); 
+    e.dataTransfer.dropEffect = 'move';
+    if (draggedOverList !== listId) setDraggedOverList(listId); 
+  };
+  
+  const onDragLeaveList = (e) => { 
+    e.preventDefault(); 
+    setDraggedOverList(null); 
+  };
+  
   const onDropList = async (e, listId) => {
     e.preventDefault();
     setDraggedOverList(null);
@@ -286,29 +311,21 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
     }
   };
 
-  // --- KOMPONENT WIERSZA (Task Row) ---
-  const TaskRow = ({ task }) => {
+  // --- RENDER TASK ROW ---
+  const renderTaskRow = (task) => {
     const isDone = task.status === 'done';
     
     return (
       <div 
+        key={task.id}
+        draggable
+        onDragStart={(e) => handleDragStart(e, task)}
         onContextMenu={(e) => handleContextMenu(e, task)}
         onClick={(e) => handleContextMenu(e, task)}
         className={`relative flex items-center gap-3 p-3 transition-colors hover:bg-white/5 active:bg-white/10 border-b border-gray-800/50 last:border-0 group cursor-pointer overflow-hidden ${isDone ? 'opacity-50' : ''}`}
       >
-        {/* DRAG HANDLE (Tylko Desktop, widoczne po najechaniu) */}
-        <div 
-          draggable
-          onDragStart={(e) => { e.stopPropagation(); onDragStart(e, task); }}
-          className="hidden md:flex opacity-0 group-hover:opacity-100 items-center justify-center cursor-grab active:cursor-grabbing w-4 h-full absolute left-0 shrink-0 text-gray-500 hover:text-white bg-gradient-to-r from-[#1c1c1e] via-[#1c1c1e] to-transparent z-10 pl-1"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8h16M4 16h16"></path></svg>
-        </div>
-
-        {/* KOLOR */}
-        <div className="w-1.5 self-stretch rounded-full shrink-0 md:ml-4 z-0" style={{ backgroundColor: task.color || '#3498db' }}></div>
+        <div className="w-1.5 self-stretch rounded-full shrink-0 z-0" style={{ backgroundColor: task.color || '#3498db' }}></div>
         
-        {/* PRZYCISK ZROBIONE */}
         <button 
           onClick={(e) => { e.stopPropagation(); toggleTaskStatus(task); }}
           className={`w-6 h-6 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors ${isDone ? 'bg-green-500 border-green-500' : 'border-gray-500 hover:border-gray-400'}`}
@@ -316,12 +333,10 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
           {isDone && <svg className="w-4 h-4 text-white shrink-0" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"></path></svg>}
         </button>
 
-        {/* TEKST - dodane zawijanie tekstu */}
         <div className={`flex-1 min-w-0 pr-2 text-[15px] font-medium break-words whitespace-normal leading-tight py-1 ${isDone ? 'line-through text-gray-500' : 'text-gray-200'}`}>
           {task.content}
         </div>
 
-        {/* NOTATKA ORAZ OPCJE */}
         <div className="flex items-center gap-2 shrink-0">
           {task.note && (
             <span 
@@ -331,8 +346,6 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
               ✎ Note
             </span>
           )}
-
-          {/* OPCJE (DESKTOP HOVER) */}
           <div className="hidden md:flex opacity-0 group-hover:opacity-100 transition-opacity gap-1 shrink-0">
             {!task.note && (
               <button onClick={(e) => openNoteEditor(e, task)} className="p-1.5 text-gray-400 hover:text-[#f1c40f] rounded-md hover:bg-white/10" title="Add Note">
@@ -354,9 +367,7 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
   return (
     <div className="flex h-full w-full max-w-[100vw] bg-[#121212] md:bg-[#1c1c1e] text-white overflow-hidden relative">
       
-      {/* ======================================= */}
-      {/* DESKTOP LEWY PANEL (Nawigacja List)     */}
-      {/* ======================================= */}
+      {/* DESKTOP LEWY PANEL (Nawigacja List) */}
       <div className="hidden md:flex flex-col w-64 bg-[#121212] border-r border-gray-800 pt-[calc(env(safe-area-inset-top)+1.5rem)] shrink-0">
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
           
@@ -420,12 +431,9 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
         </div>
       </div>
 
-      {/* ======================================= */}
-      {/* ŚRODKOWY PANEL (Główna lista zadań)     */}
-      {/* ======================================= */}
+      {/* ŚRODKOWY PANEL (Główna lista zadań) */}
       <div className="flex-1 flex flex-col min-w-0 w-full max-w-full overflow-x-hidden bg-[#121212] md:bg-transparent transition-all duration-300">
         
-        {/* NAGŁÓWEK MOBILE & DESKTOP */}
         <header className="flex flex-col md:flex-row md:items-center justify-between p-4 pb-2 md:pb-4 pt-[calc(env(safe-area-inset-top)+1rem)] md:pt-[calc(env(safe-area-inset-top)+1.5rem)] border-b border-gray-800 bg-[#1c1c1e] md:bg-transparent shrink-0 md:px-8 w-full max-w-full">
           <div className="flex items-center justify-between w-full md:w-auto min-w-0 gap-2">
             <div className="flex items-center gap-3 min-w-0 flex-1 pr-2">
@@ -442,8 +450,6 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
-              
-              {/* MOBILE: Przeniesione filtry daty i koloru na górny pasek */}
               <div className="md:hidden flex items-center gap-2 bg-[#2b2b2b] px-2 py-1 rounded-xl border border-gray-700">
                 {!isShoppingList && !showDateInput && (
                   <button type="button" onClick={() => setShowDateInput(true)} className="text-gray-400 hover:text-[#3498db] transition-colors p-1" title="Set Date">
@@ -466,7 +472,6 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
                   title="Label Color"
                 />
               </div>
-
 
               {isShoppingList && groupedTasks.bought?.length > 0 && (
                 <button 
@@ -531,10 +536,8 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
           </div>
         </header>
 
-        {/* ZUNIFIKOWANY PASEK QUICK ADD / EDIT */}
         <div className={`p-3 md:p-4 md:px-8 bg-[#1c1c1e] shrink-0 border-b w-full max-w-full ${editingTask ? 'border-green-500/50 shadow-[0_4px_15px_-3px_rgba(34,197,94,0.1)]' : 'border-gray-800'}`}>
           <form onSubmit={handleQuickSubmit} className="flex flex-col sm:flex-row sm:items-center gap-3 md:gap-4 w-full min-w-0">
-            
             <div className="flex w-full items-center gap-3">
               <input 
                 ref={inputRef}
@@ -544,8 +547,6 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
                 onChange={(e) => setQuickAddText(e.target.value)}
                 className="flex-1 min-w-0 bg-[#2b2b2b] md:bg-transparent text-white px-4 py-2.5 md:p-0 rounded-xl md:rounded-none border border-gray-700 md:border-none focus:outline-none focus:border-[#3498db] md:text-lg w-full"
               />
-
-              {/* MOBILE: Przycisk dodaj (Po prawej stronie inputa) */}
               <div className="flex md:hidden items-center gap-2 shrink-0">
                 {editingTask && (
                   <button 
@@ -570,10 +571,8 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
               </div>
             </div>
             
-            {/* DESKTOP: Przyciski z filtrem i statusem */}
             <div className="hidden md:flex flex-wrap sm:flex-nowrap items-center justify-between sm:justify-end gap-3 w-full sm:w-auto shrink-0 min-w-0">
                 <div className="flex items-center gap-3 bg-[#2b2b2b] px-3 py-1.5 rounded-xl border border-gray-700 min-w-0 max-w-full overflow-hidden">
-                  {/* DATA */}
                   {!isShoppingList && !showDateInput && (
                     <button type="button" onClick={() => setShowDateInput(true)} className="text-gray-400 hover:text-[#3498db] transition-colors p-1 shrink-0" title="Set Date">
                       <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
@@ -587,8 +586,6 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
                       className="bg-transparent text-[#3498db] text-sm font-medium focus:outline-none [color-scheme:dark] cursor-pointer w-[110px] sm:w-auto shrink-0"
                     />
                   )}
-
-                  {/* KOLOR */}
                   <input 
                     type="color" 
                     value={quickColor}
@@ -599,7 +596,6 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                  {/* PRZYCISK ANULUJ EDYCJĘ */}
                   {editingTask && (
                     <button 
                       type="button" 
@@ -609,8 +605,6 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
                       <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg>
                     </button>
                   )}
-
-                  {/* PRZYCISK ZAPISZ */}
                   <button 
                     type="submit"
                     disabled={!quickAddText.trim()}
@@ -639,14 +633,13 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
               </div>
             ) : (
               <>
-                {/* WIDOK ZAKUPOWY */}
                 {isShoppingList && (
                   <>
                     {groupedTasks.toBuy?.length > 0 && (
                       <section>
                         <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2 ml-2 break-words">To Buy</h3>
                         <div className="bg-[#1c1c1e] rounded-2xl overflow-hidden shadow-sm border border-white/5">
-                          {groupedTasks.toBuy.map(task => <TaskRow key={task.id} task={task} />)}
+                          {groupedTasks.toBuy.map(task => renderTaskRow(task))}
                         </div>
                       </section>
                     )}
@@ -654,35 +647,44 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
                       <section>
                         <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2 ml-2 mt-6 break-words">Bought</h3>
                         <div className="bg-[#1c1c1e]/50 rounded-2xl overflow-hidden shadow-sm border border-white/5">
-                          {groupedTasks.bought.map(task => <TaskRow key={task.id} task={task} />)}
+                          {groupedTasks.bought.map(task => renderTaskRow(task))}
                         </div>
                       </section>
                     )}
                   </>
                 )}
 
-                {/* WIDOK NORMALNY */}
                 {!isShoppingList && (
                   <>
                     {groupedTasks.overdue?.length > 0 && (
                       <section>
                         <h3 className="text-sm font-bold text-red-500 uppercase tracking-wider mb-2 ml-2 break-words">Overdue</h3>
                         <div className="bg-[#1c1c1e] rounded-2xl overflow-hidden shadow-sm border border-red-500/20">
-                          {groupedTasks.overdue.map(task => <TaskRow key={task.id} task={task} />)}
+                          {groupedTasks.overdue.map(task => renderTaskRow(task))}
                         </div>
                       </section>
                     )}
                     
-                    {groupedTasks.upcoming?.map(group => (
-                      <section key={group.title}>
-                        <h3 className={`text-sm font-bold uppercase tracking-wider mb-2 ml-2 mt-6 break-words ${group.dateVal === todayStr ? 'text-[#3498db]' : 'text-gray-400'}`}>
-                          {group.title}
-                        </h3>
-                        <div className="bg-[#1c1c1e] rounded-2xl overflow-hidden shadow-sm border border-white/5">
-                          {group.tasks.map(task => <TaskRow key={task.id} task={task} />)}
-                        </div>
-                      </section>
-                    ))}
+                    {groupedTasks.upcoming?.map(group => {
+                      const isHoveredDate = draggedOverDate === group.dateVal;
+
+                      return (
+                        <section 
+                          key={group.title}
+                          onDragOver={(e) => handleDragOverDate(e, group.dateVal)}
+                          onDragLeave={handleDragLeaveDate}
+                          onDrop={(e) => handleDropDate(e, group.dateVal)}
+                          className={`transition-all duration-200 rounded-2xl ${isHoveredDate ? 'bg-[#3498db]/10 border border-[#3498db]/30 p-2 -mx-2' : ''}`}
+                        >
+                          <h3 className={`text-sm font-bold uppercase tracking-wider mb-2 ml-2 ${isHoveredDate ? 'mt-2' : 'mt-6'} break-words ${group.dateVal === todayStr ? 'text-[#3498db]' : 'text-gray-400'}`}>
+                            {group.title}
+                          </h3>
+                          <div className="bg-[#1c1c1e] rounded-2xl overflow-hidden shadow-sm border border-white/5">
+                            {group.tasks.map(task => renderTaskRow(task))}
+                          </div>
+                        </section>
+                      );
+                    })}
                   </>
                 )}
               </>
@@ -691,7 +693,6 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
         </div>
       </div>
 
-      {/* GLOBALNE MENU KONTEKSTOWE ZADAŃ */}
       {contextMenu && (
         <div 
           className="fixed z-[60] bg-[#1c1c1e] border border-gray-800 rounded-xl shadow-2xl py-1 w-56 animate-in fade-in zoom-in-95 duration-100"
@@ -718,7 +719,6 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
         </div>
       )}
 
-      {/* MODAL LISTY (Add List) */}
       {showListForm && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 md:bg-black/60 md:backdrop-blur-sm transition-opacity p-0 md:p-4">
           <div className="bg-[#121212] md:bg-[#1c1c1e] w-full h-full md:h-auto md:w-full md:max-w-sm flex flex-col md:rounded-3xl md:border md:border-white/10 shadow-2xl">
@@ -756,7 +756,6 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
         </div>
       )}
 
-      {/* UNIVERSAL NOTE EDITOR */}
       <NoteEditorModal 
         isOpen={noteModalData?.isOpen} 
         initialNote={noteModalData?.content} 
