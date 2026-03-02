@@ -3,6 +3,7 @@ import { useData } from '../context/DataContext';
 import ExamFormModal from '../components/ExamFormModal';
 import TopicFormModal from '../components/TopicFormModal';
 import NoteEditorModal from '../components/NoteEditorModal';
+import BlockedDaysModal from '../components/BlockedDaysModal'; // ZAAKTUALIZOWANY IMPORT
 
 export default function PlanView({ onBack }) {
   const { 
@@ -20,6 +21,9 @@ export default function PlanView({ onBack }) {
   const [topicToEdit, setTopicToEdit] = useState(null);
 
   const [noteModalData, setNoteModalData] = useState(null); 
+
+  // STAN DLA MODALU DNI WOLNYCH
+  const [showBlockedDays, setShowBlockedDays] = useState(false);
 
   // Stan do Drag & Drop (podświetlenie dnia nad którym jesteśmy)
   const [draggedOverDate, setDraggedOverDate] = useState(null);
@@ -212,6 +216,12 @@ export default function PlanView({ onBack }) {
               <button onClick={() => { setExamToEdit(null); setShowExamForm(true); setActionMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 rounded-lg transition-colors text-sm font-medium">
                 <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"></path></svg> Add Exam
               </button>
+
+              {/* MENU ITEM: Days Off */}
+              <button onClick={() => { setShowBlockedDays(true); setActionMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 rounded-lg transition-colors text-sm font-medium text-[#e74c3c]">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg> Days Off
+              </button>
+
               <div className="h-px bg-gray-800 my-1"></div>
               <button onClick={handlePlanUnscheduled} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 rounded-lg transition-colors text-sm font-medium text-[#f1c40f]">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path></svg> Plan Unscheduled
@@ -223,8 +233,16 @@ export default function PlanView({ onBack }) {
           )}
         </div>
 
-        {/* WIDOK DESKTOP: 3 ikony na stałe z tooltipami */}
+        {/* WIDOK DESKTOP: Ikony na stałe z tooltipami */}
         <div className="hidden md:flex items-center gap-2">
+          
+          <div className="relative group mr-2">
+            <button onClick={() => setShowBlockedDays(true)} className="p-2 text-[#e74c3c] bg-red-500/10 hover:bg-red-500/20 rounded-full transition-colors flex items-center gap-2">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+              <span className="text-sm font-bold pr-2">Days Off</span>
+            </button>
+          </div>
+
           <div className="relative group">
             <button onClick={() => { setExamToEdit(null); setShowExamForm(true); }} className="p-2.5 text-gray-400 hover:text-white hover:bg-white/10 rounded-full transition-colors">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"></path></svg>
@@ -530,8 +548,6 @@ export default function PlanView({ onBack }) {
               <button onClick={(e) => openNoteEditor(e, contextMenu.item, 'topic')} className="w-full text-left px-4 py-3 text-sm font-medium text-white hover:bg-white/10 transition-colors border-b border-gray-800">
                 Edit Note
               </button>
-
-              {/* DODANE: LOCK / UNLOCK TOPIC */}
               <button
                 onClick={() => { 
                   saveTopic({ ...contextMenu.item, locked: !contextMenu.item.locked }); 
@@ -576,6 +592,12 @@ export default function PlanView({ onBack }) {
         title={noteModalData?.title}
         onClose={() => setNoteModalData(null)}
         onSave={handleSaveNote}
+      />
+      
+      {/* DODANE: Modal Blocked Days */}
+      <BlockedDaysModal 
+        isOpen={showBlockedDays} 
+        onClose={() => setShowBlockedDays(false)} 
       />
 
     </div>

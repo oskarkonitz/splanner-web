@@ -22,13 +22,13 @@ export function DataProvider({ children, session }) {
   const [subjects, setSubjects] = useState([]);
   const [scheduleEntries, setScheduleEntries] = useState([]);
   const [cancellations, setCancellations] = useState([]);
-  const [scheduleNotes, setScheduleNotes] = useState([]); // NOWA TABELA
+  const [scheduleNotes, setScheduleNotes] = useState([]);
   const [customEvents, setCustomEvents] = useState([]);
   const [eventLists, setEventLists] = useState([]);
   const [semesters, setSemesters] = useState([]);
   const [gradeModules, setGradeModules] = useState([]);
   const [grades, setGrades] = useState([]);
-  const [blockedDates, setBlockedDates] = useState([]);
+  const [blockedDates, setBlockedDates] = useState([]); // BLOKOWANE DATY
   const [subscriptions, setSubscriptions] = useState([]); 
   
   const [achievements, setAchievements] = useState([]); 
@@ -47,7 +47,7 @@ export function DataProvider({ children, session }) {
         tasksRes, taskListsRes, topicsRes, examsRes, statsRes, 
         settingsRes, 
         subjectsRes, scheduleRes, cancellationsRes, 
-        notesRes, // NOWE POBIERANIE
+        notesRes,
         customEventsRes, eventListsRes, semestersRes,
         gradeModulesRes, gradesRes, blockedRes, subscriptionsRes,
         achievementsRes 
@@ -61,13 +61,13 @@ export function DataProvider({ children, session }) {
         supabase.from('subjects').select('*'),
         supabase.from('schedule_entries').select('*'),
         supabase.from('schedule_cancellations').select('*'),
-        supabase.from('schedule_notes').select('*'), // POBIERANIE NOTATEK
+        supabase.from('schedule_notes').select('*'), 
         supabase.from('custom_events').select('*'),
         supabase.from('event_lists').select('*'),
         supabase.from('semesters').select('*'),
         supabase.from('grade_modules').select('*'),
         supabase.from('grades').select('*'),
-        supabase.from('blocked_dates').select('*'),
+        supabase.from('blocked_dates').select('*'), // POBIERANIE BLOCKED DATES
         supabase.from('subscriptions').select('*'),
         supabase.from('achievements').select('*') 
       ]);
@@ -91,7 +91,7 @@ export function DataProvider({ children, session }) {
       if (subjectsRes.data) setSubjects(subjectsRes.data);
       if (scheduleRes.data) setScheduleEntries(scheduleRes.data);
       if (cancellationsRes.data) setCancellations(cancellationsRes.data);
-      if (notesRes.data) setScheduleNotes(notesRes.data); // ZAPISANIE NOTATEK DO STANU
+      if (notesRes.data) setScheduleNotes(notesRes.data);
       if (customEventsRes.data) setCustomEvents(customEventsRes.data);
       if (eventListsRes.data) setEventLists(eventListsRes.data);
       if (semestersRes.data) setSemesters(semestersRes.data);
@@ -120,14 +120,45 @@ export function DataProvider({ children, session }) {
     }
   };
 
+  // --- LOGIKA BLOKOWANIA DAT ---
+  const saveBlockedDates = async (dateStringsArray) => {
+    try {
+      // Usuwamy wszystkie poprzednie daty usera (aby uniknąć duplikatów i łatwo nadpisać stan)
+      await supabase.from('blocked_dates').delete().neq('date', '1970-01-01');
+
+      // Jeśli nowa tablica nie jest pusta, wstawiamy nowe daty
+      if (dateStringsArray && dateStringsArray.length > 0) {
+        const payload = dateStringsArray.map(dStr => ({
+          date: dStr,
+          user_id: session?.user?.id
+        }));
+        await supabase.from('blocked_dates').insert(payload);
+      }
+
+      // Zaktualizowanie statystyk (Liczba Dni Wolnych)
+      const currentStats = globalStats || [];
+      const daysOffStat = currentStats.find(s => s.key === 'days_off');
+      const currentDaysOff = daysOffStat ? parseInt(daysOffStat.value) || 0 : 0;
+      
+      // Liczymy różnicę w długości
+      const diff = dateStringsArray.length - blockedDates.length;
+      if (diff !== 0) {
+          const newTotal = currentDaysOff + diff;
+          await supabase.from('global_stats').upsert({ key: 'days_off', value: Math.max(0, newTotal) });
+      }
+
+      await fetchDashboardData();
+    } catch (error) {
+      console.error("Błąd zapisu zablokowanych dat:", error);
+    }
+  };
+
   // --- LOGIKA NOTATEK W PLANIE ZAJĘĆ ---
   const saveScheduleNote = async (entryId, date, content) => {
     try {
-      // Szukamy czy notatka dla tej pary (entry+data) już istnieje
       const existingNote = scheduleNotes.find(n => n.entry_id === entryId && n.date === date);
       
       if (!content.trim()) {
-        // Jeśli treść jest pusta, usuwamy notatkę z bazy (opcjonalne, zależnie od preferencji)
         if (existingNote) {
           await supabase.from('schedule_notes').delete().eq('id', existingNote.id);
         }
@@ -699,8 +730,9 @@ export function DataProvider({ children, session }) {
   return (
     <DataContext.Provider value={{ 
       isLoading, dailyTasks, taskLists, topics, exams, globalStats,
-      subjects, scheduleEntries, cancellations, scheduleNotes, // UDOSTĘPNIONE NOTATKI
+      subjects, scheduleEntries, cancellations, scheduleNotes,
       customEvents, eventLists, semesters, gradeModules, grades,
+      blockedDates, // UDOSPTĘPNIONE BLOCKED DATES W PROVIDERZE
       subscriptions, achievements, 
       settings,
       updateSetting,
@@ -710,7 +742,7 @@ export function DataProvider({ children, session }) {
       deleteSubject, saveSemester, deleteSemester, setCurrentSemester,
       saveGradeModule, deleteGradeModule, saveGrade, deleteGrade,
       saveSubscription, deleteSubscription,
-      saveScheduleNote // UDOSTĘPNIONA FUNKCJA ZAPISU
+      saveScheduleNote, saveBlockedDates // UDOSPTĘPNIONE ZAPISYWANIE
     }}>
       {children}
       <GlobalPopups popupData={popupQueue[0]} onClose={() => setPopupQueue(prev => prev.slice(1))} />
