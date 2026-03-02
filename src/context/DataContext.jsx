@@ -28,7 +28,7 @@ export function DataProvider({ children, session }) {
   const [semesters, setSemesters] = useState([]);
   const [gradeModules, setGradeModules] = useState([]);
   const [grades, setGrades] = useState([]);
-  const [blockedDates, setBlockedDates] = useState([]); // BLOKOWANE DATY
+  const [blockedDates, setBlockedDates] = useState([]); 
   const [subscriptions, setSubscriptions] = useState([]); 
   
   const [achievements, setAchievements] = useState([]); 
@@ -67,7 +67,7 @@ export function DataProvider({ children, session }) {
         supabase.from('semesters').select('*'),
         supabase.from('grade_modules').select('*'),
         supabase.from('grades').select('*'),
-        supabase.from('blocked_dates').select('*'), // POBIERANIE BLOCKED DATES
+        supabase.from('blocked_dates').select('*'), 
         supabase.from('subscriptions').select('*'),
         supabase.from('achievements').select('*') 
       ]);
@@ -120,13 +120,10 @@ export function DataProvider({ children, session }) {
     }
   };
 
-  // --- LOGIKA BLOKOWANIA DAT ---
   const saveBlockedDates = async (dateStringsArray) => {
     try {
-      // Usuwamy wszystkie poprzednie daty usera (aby uniknąć duplikatów i łatwo nadpisać stan)
       await supabase.from('blocked_dates').delete().neq('date', '1970-01-01');
 
-      // Jeśli nowa tablica nie jest pusta, wstawiamy nowe daty
       if (dateStringsArray && dateStringsArray.length > 0) {
         const payload = dateStringsArray.map(dStr => ({
           date: dStr,
@@ -135,12 +132,10 @@ export function DataProvider({ children, session }) {
         await supabase.from('blocked_dates').insert(payload);
       }
 
-      // Zaktualizowanie statystyk (Liczba Dni Wolnych)
       const currentStats = globalStats || [];
       const daysOffStat = currentStats.find(s => s.key === 'days_off');
       const currentDaysOff = daysOffStat ? parseInt(daysOffStat.value) || 0 : 0;
       
-      // Liczymy różnicę w długości
       const diff = dateStringsArray.length - blockedDates.length;
       if (diff !== 0) {
           const newTotal = currentDaysOff + diff;
@@ -153,7 +148,6 @@ export function DataProvider({ children, session }) {
     }
   };
 
-  // --- LOGIKA NOTATEK W PLANIE ZAJĘĆ ---
   const saveScheduleNote = async (entryId, date, content) => {
     try {
       const existingNote = scheduleNotes.find(n => n.entry_id === entryId && n.date === date);
@@ -178,7 +172,6 @@ export function DataProvider({ children, session }) {
     }
   };
 
-  // --- ENGINE OSIĄGNIĘĆ ---
   const saveAchievement = async (id) => {
     try {
       const today = new Date().toISOString().split('T')[0];
@@ -552,14 +545,32 @@ export function DataProvider({ children, session }) {
 
   const saveGrade = async (gradeData) => {
     try {
+      const isCounter = gradeData.is_counter || false;
+      const pts = parseFloat(gradeData.points) || 0;
+      
+      // NAPRAWA ZEROWEGO MNOŻNIKA
+      const parsedMultiplier = parseFloat(gradeData.points_multiplier);
+      const multiplier = isNaN(parsedMultiplier) ? 1.0 : parsedMultiplier;
+      
+      const finalValue = isCounter ? (pts * multiplier) : (parseFloat(gradeData.value) || 0);
+
+      // NAPRAWA ZEROWEJ WAGI
+      const parsedWeight = parseFloat(gradeData.weight);
+      const finalWeight = isNaN(parsedWeight) ? 1 : parsedWeight;
+
       const payload = {
         subject_id: gradeData.subject_id,
         module_id: gradeData.module_id || null,
-        value: parseFloat(gradeData.value) || 0,
-        weight: parseFloat(gradeData.weight) || 1,
+        value: finalValue,
+        weight: finalWeight,
         desc_text: gradeData.desc || '',
-        date: gradeData.date || null
+        date: gradeData.date || null,
+        is_counter: isCounter,
+        points: pts,
+        points_max: gradeData.points_max ? parseFloat(gradeData.points_max) : null,
+        points_multiplier: multiplier
       };
+
       if (gradeData.id) {
         await supabase.from('grades').update(payload).eq('id', gradeData.id);
       } else {
@@ -575,6 +586,28 @@ export function DataProvider({ children, session }) {
       await supabase.from('grades').delete().eq('id', id);
       await fetchDashboardData();
     } catch (error) { console.error("Błąd usuwania oceny:", error); }
+  };
+
+  const updateGradePoints = async (id, delta) => {
+    try {
+      const grade = grades.find(g => g.id === id);
+      if (!grade) return;
+      
+      const newPoints = (parseFloat(grade.points) || 0) + delta;
+      
+      // NAPRAWA ZEROWEGO MNOŻNIKA
+      const parsedMultiplier = parseFloat(grade.points_multiplier);
+      const multiplier = isNaN(parsedMultiplier) ? 1.0 : parsedMultiplier;
+      
+      const newValue = newPoints * multiplier;
+
+      await supabase.from('grades').update({ 
+        points: newPoints,
+        value: newValue 
+      }).eq('id', id);
+      
+      await fetchDashboardData();
+    } catch (error) { console.error("Błąd aktualizacji punktów:", error); }
   };
 
   const saveSubscription = async (subData) => {
@@ -732,7 +765,7 @@ export function DataProvider({ children, session }) {
       isLoading, dailyTasks, taskLists, topics, exams, globalStats,
       subjects, scheduleEntries, cancellations, scheduleNotes,
       customEvents, eventLists, semesters, gradeModules, grades,
-      blockedDates, // UDOSPTĘPNIONE BLOCKED DATES W PROVIDERZE
+      blockedDates,
       subscriptions, achievements, 
       settings,
       updateSetting,
@@ -740,9 +773,9 @@ export function DataProvider({ children, session }) {
       toggleTopicStatus, saveExamNote, saveTopic, deleteTopic, runPlanner,
       saveTask, deleteTask, toggleTaskStatus, sweepCompletedTasks, saveTaskList, deleteTaskList,
       deleteSubject, saveSemester, deleteSemester, setCurrentSemester,
-      saveGradeModule, deleteGradeModule, saveGrade, deleteGrade,
+      saveGradeModule, deleteGradeModule, saveGrade, deleteGrade, updateGradePoints,
       saveSubscription, deleteSubscription,
-      saveScheduleNote, saveBlockedDates // UDOSPTĘPNIONE ZAPISYWANIE
+      saveScheduleNote, saveBlockedDates
     }}>
       {children}
       <GlobalPopups popupData={popupQueue[0]} onClose={() => setPopupQueue(prev => prev.slice(1))} />

@@ -69,7 +69,7 @@ export const calculateSubjectPercent = (subjectId, allModules, allGrades) => {
 };
 
 export default function GradesView({ onBack }) {
-  const { semesters, subjects, gradeModules, grades, deleteGradeModule, deleteGrade } = useData();
+  const { semesters, subjects, gradeModules, grades, deleteGradeModule, deleteGrade, updateGradePoints } = useData();
 
   const [selectedSemester, setSelectedSemester] = useState('ALL');
   const [selectedSubject, setSelectedSubject] = useState(null);
@@ -341,14 +341,47 @@ export default function GradesView({ onBack }) {
                                 {modGrades.map(grade => (
                                   <div key={grade.id} className="flex items-center justify-between p-4 hover:bg-white/5 transition-colors group">
                                     <div className="flex-1">
-                                      <div className="font-medium text-gray-200">{grade.desc || "Untitled"}</div>
+                                      <div className="font-medium text-gray-200">
+                                        {grade.is_counter && <span className="text-xs bg-[#3498db]/20 text-[#3498db] px-2 py-0.5 rounded mr-2 uppercase tracking-wide">Licznik</span>}
+                                        {grade.desc || "Untitled"}
+                                      </div>
                                       {grade.date && <div className="text-xs text-gray-500 mt-0.5">{grade.date}</div>}
                                     </div>
-                                    <div className="flex items-center gap-6">
-                                      <div className="text-right">
-                                        <div className="text-lg font-bold text-white">{grade.value.toFixed(1)}%</div>
-                                        <div className="text-[10px] text-gray-500">W: {grade.weight}</div>
-                                      </div>
+                                    <div className="flex items-center gap-4 md:gap-6">
+                                      
+                                      {/* UI dla licznika vs standardowej oceny */}
+                                      {grade.is_counter ? (
+                                        <div className="flex items-center gap-3">
+                                          <div className="flex items-center bg-black/30 rounded-lg border border-gray-700/50 overflow-hidden">
+                                            <button 
+                                              onClick={() => updateGradePoints(grade.id, -1)} 
+                                              disabled={grade.points <= 0}
+                                              className="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                                            >
+                                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M20 12H4"></path></svg>
+                                            </button>
+                                            <div className="min-w-[36px] text-center font-bold text-[#3498db]">
+                                              {grade.points || 0}
+                                            </div>
+                                            <button 
+                                              onClick={() => updateGradePoints(grade.id, 1)} 
+                                              className="px-3 py-1.5 text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+                                            >
+                                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 4v16m8-8H4"></path></svg>
+                                            </button>
+                                          </div>
+                                          <div className="text-right min-w-[45px]">
+                                            <div className="text-lg font-bold text-gray-300">{grade.value.toFixed(1)}%</div>
+                                            <div className="text-[10px] text-gray-500">W: {grade.weight}</div>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div className="text-right">
+                                          <div className="text-lg font-bold text-white">{grade.value.toFixed(1)}%</div>
+                                          <div className="text-[10px] text-gray-500">W: {grade.weight}</div>
+                                        </div>
+                                      )}
+
                                       <div className="hidden md:flex opacity-0 group-hover:opacity-100 transition-opacity gap-1">
                                         <button onClick={() => { setGradeToEdit(grade); setShowGradeForm(true); }} className="p-1.5 text-gray-400 hover:text-[#3498db] bg-white/5 rounded-md hover:bg-white/10">
                                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>

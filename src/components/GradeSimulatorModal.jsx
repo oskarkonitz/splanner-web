@@ -2,10 +2,9 @@ import { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { calculateModuleAvg, calculateSubjectPercent } from '../views/GradesView';
 
-// Subkomponent wiersza oceny - pozwala na trzymanie lokalnego stanu punktów (Got/Max)
 const SimGradeRow = ({ grade, updateGrade, removeGrade }) => {
-  const [ptsGot, setPtsGot] = useState('');
-  const [ptsMax, setPtsMax] = useState('');
+  const [ptsGot, setPtsGot] = useState(grade.points !== undefined && grade.points !== null ? grade.points.toString() : '');
+  const [ptsMax, setPtsMax] = useState(grade.points_max !== undefined && grade.points_max !== null ? grade.points_max.toString() : '');
 
   const handlePtsChange = (field, val) => {
     if (field === 'got') setPtsGot(val);
@@ -14,8 +13,18 @@ const SimGradeRow = ({ grade, updateGrade, removeGrade }) => {
     const got = field === 'got' ? parseFloat(val.replace(',', '.')) : parseFloat(ptsGot.replace(',', '.'));
     const max = field === 'max' ? parseFloat(val.replace(',', '.')) : parseFloat(ptsMax.replace(',', '.'));
 
-    if (max > 0 && !isNaN(got)) {
-      updateGrade(grade.id, 'value', ((got / max) * 100).toFixed(1));
+    if (grade.is_counter) {
+      // NAPRAWA ZEROWEGO MNOŻNIKA
+      const parsedMult = parseFloat(grade.points_multiplier);
+      const mult = isNaN(parsedMult) ? 1.0 : parsedMult;
+      
+      if (!isNaN(got)) {
+        updateGrade(grade.id, 'value', (got * mult).toFixed(1));
+      }
+    } else {
+      if (max > 0 && !isNaN(got)) {
+        updateGrade(grade.id, 'value', ((got / max) * 100).toFixed(1));
+      }
     }
   };
 
@@ -23,7 +32,8 @@ const SimGradeRow = ({ grade, updateGrade, removeGrade }) => {
     <div className="flex flex-col p-3 bg-[#1c1c1e] rounded-xl border border-white/5 gap-2">
       {/* GÓRNY RZĄD: Opis i główne inputy */}
       <div className="flex items-center justify-between gap-2">
-        <div className={`text-sm font-medium ${grade.isVirtual ? 'text-[#f39c12]' : 'text-gray-300'} truncate`}>
+        <div className={`text-sm font-medium ${grade.isVirtual ? 'text-[#f39c12]' : 'text-gray-300'} truncate flex items-center gap-2`}>
+          {grade.is_counter && <span className="text-[10px] bg-[#3498db]/20 text-[#3498db] px-1.5 py-0.5 rounded uppercase tracking-wide">Licznik</span>}
           {grade.desc}
         </div>
         
@@ -44,12 +54,21 @@ const SimGradeRow = ({ grade, updateGrade, removeGrade }) => {
         </div>
       </div>
 
-      {/* DOLNY RZĄD: Przelicznik punktowy */}
+      {/* DOLNY RZĄD: Przelicznik punktowy dostosowany do trybu */}
       <div className="flex items-center justify-end gap-2 pr-10 text-sm mt-1">
-         <span className="text-gray-500 text-xs font-bold mr-1">Pts ➡ %:</span>
-         <input type="number" placeholder="Got" value={ptsGot} onChange={(e) => handlePtsChange('got', e.target.value)} className="w-14 bg-[#2b2b2b] text-center text-white py-1 px-2 rounded-md border border-gray-700 focus:outline-none text-xs" />
-         <span className="text-gray-500 font-bold">/</span>
-         <input type="number" placeholder="Max" value={ptsMax} onChange={(e) => handlePtsChange('max', e.target.value)} className="w-14 bg-[#2b2b2b] text-center text-white py-1 px-2 rounded-md border border-gray-700 focus:outline-none text-xs" />
+         {grade.is_counter ? (
+            <>
+               <span className="text-gray-500 text-xs font-bold mr-1">Pts (x{grade.points_multiplier !== undefined ? grade.points_multiplier : 1}):</span>
+               <input type="number" placeholder="Got" value={ptsGot} onChange={(e) => handlePtsChange('got', e.target.value)} className="w-14 bg-[#2b2b2b] text-center text-[#3498db] font-bold py-1 px-2 rounded-md border border-gray-700 focus:outline-none text-xs" />
+            </>
+         ) : (
+            <>
+               <span className="text-gray-500 text-xs font-bold mr-1">Pts ➡ %:</span>
+               <input type="number" placeholder="Got" value={ptsGot} onChange={(e) => handlePtsChange('got', e.target.value)} className="w-14 bg-[#2b2b2b] text-center text-white py-1 px-2 rounded-md border border-gray-700 focus:outline-none text-xs" />
+               <span className="text-gray-500 font-bold">/</span>
+               <input type="number" placeholder="Max" value={ptsMax} onChange={(e) => handlePtsChange('max', e.target.value)} className="w-14 bg-[#2b2b2b] text-center text-white py-1 px-2 rounded-md border border-gray-700 focus:outline-none text-xs" />
+            </>
+         )}
       </div>
     </div>
   );
