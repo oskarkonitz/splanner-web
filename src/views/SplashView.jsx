@@ -18,30 +18,30 @@ export default function SplashView({ onFinish }) {
     setTimeout(() => {
       setStatusText("Loading data...")
       setProgressValue(65)
-    }, 500)
+    }, 200)
 
     // Etap 2 - 1.4s
     setTimeout(() => {
       setStatusText("Preparing dashboard...")
       setProgressValue(95)
-    }, 1400)
+    }, 700)
 
     // Etap 3 (Finisz) - 2.2s
     setTimeout(() => {
       setStatusText("Ready!")
       setProgressValue(100)
-    }, 2200)
+    }, 500)
 
     // Wybuch i ukrycie tekstu - 2.5s
     setTimeout(() => {
       setTextOpacity(0)
-    }, 2500)
+    }, 600)
 
     // Powiększenie loga (Blast off) - 2.7s
     setTimeout(() => {
       setFinalScale(15)
       setFinalOpacity(0)
-    }, 2700)
+    }, 1000)
 
     // Zakończenie splasha - 3.1s (po animacji wybuchu)
     setTimeout(() => {

@@ -59,6 +59,7 @@ export default function HomeView() {
   const [totalProgress, setTotalProgress] = useState({ done: 0, total: 0 })
   const [nextExam, setNextExam] = useState(null)
   const [nowNextItem, setNowNextItem] = useState(null)
+  const [upcomingToday, setUpcomingToday] = useState([])
   const [focusTime, setFocusTime] = useState(0)
   const [gpa, setGpa] = useState(0.0)
 
@@ -154,6 +155,7 @@ export default function HomeView() {
 
     // 4. Now / Next (Zajęcia/Wydarzenia)
     let foundNext = null;
+    let foundTodayList = [];
     const selectedSemesterID = "ALL";
 
     for (let offset = 0; offset < 7; offset++) {
@@ -231,11 +233,17 @@ export default function HomeView() {
       
       if (dailyItems.length > 0) {
         dailyItems.sort((a, b) => a.startTime.localeCompare(b.startTime));
-        foundNext = dailyItems[0];
-        break; 
+        if (offset === 0) {
+          foundTodayList = dailyItems;
+          foundNext = dailyItems[0];
+        } else if (!foundNext) {
+          foundNext = dailyItems[0];
+          break; 
+        }
       }
     }
     setNowNextItem(foundNext);
+    setUpcomingToday(foundTodayList);
 
     // 5. Kalkulator GPA
     const convertToGradeScale = (val) => {
@@ -460,7 +468,9 @@ export default function HomeView() {
         countdownStr = h > 0 ? `Starts in ${h}h ${m}m` : `Starts in ${m}m`;
       }
     } else {
-      countdownStr = "Upcoming";
+      const daysToEvent = getDaysUntil(nowNextItem.dateStr);
+      if (daysToEvent === 1) countdownStr = "Tomorrow";
+      else countdownStr = `In ${daysToEvent} days`;
     }
 
     return { isNow, isStartingSoon, progress, isToday, countdownStr };
@@ -525,6 +535,12 @@ export default function HomeView() {
     const { isNow, isStartingSoon, progress, isToday, countdownStr } = getNowNextState();
     const examState = getNextExamState();
     
+    // Obliczanie paska postępu dla nadchodzącego egzaminu
+    const examTopics = nextExam ? (topics || []).filter(t => t.exam_id === nextExam.id) : [];
+    const examTotal = examTopics.length;
+    const examDone = examTopics.filter(t => t.status === 'done').length;
+    const examPct = examTotal > 0 ? Math.round((examDone / examTotal) * 100) : 0;
+
     return (
       <div className="flex flex-col gap-6">
         <style>{`
@@ -609,6 +625,26 @@ export default function HomeView() {
                     {nowNextItem.typeStr} {nowNextItem.subtitle ? `• ${nowNextItem.subtitle}` : ""}
                   </span>
                 </div>
+                
+                {/* ZAPLANOWANE NA DZISIAJ */}
+                {isToday && upcomingToday.length > 1 && (
+                  <div className="mt-2 pt-3 border-t border-white/10 flex flex-col gap-2">
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Later Today</span>
+                    {upcomingToday.slice(1).slice(0, 3).map((item, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2 truncate pr-2">
+                          <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: item.hexColor }}></div>
+                          <span className="text-gray-300 truncate">{item.title}</span>
+                        </div>
+                        <span className="text-gray-500 shrink-0">{item.startTime}</span>
+                      </div>
+                    ))}
+                    {upcomingToday.length > 4 && (
+                      <span className="text-[10px] text-gray-500 mt-1">+{upcomingToday.length - 4} more...</span>
+                    )}
+                  </div>
+                )}
+
               </div>
             </div>
           ) : (
@@ -648,6 +684,15 @@ export default function HomeView() {
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                       <span>{nextExam.date} • {nextExam.time?.substring(0, 5) || "TBA"}</span>
                     </div>
+
+                    {/* PASEK PROGRESU */}
+                    <div className="mt-4 w-full max-w-[80%] flex items-center gap-2">
+                      <div className="h-1.5 flex-1 bg-gray-700 rounded-full overflow-hidden">
+                        <div className="h-full transition-all" style={{ width: `${examPct}%`, backgroundColor: examState.hexColor }}></div>
+                      </div>
+                      <span className="text-[10px] text-gray-400 font-medium w-8 text-right">{examPct}%</span>
+                    </div>
+
                   </div>
                 ) : (
                   <span className="text-gray-400 font-medium">No upcoming exams</span>
@@ -788,6 +833,17 @@ export default function HomeView() {
             <span className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Today's Focus</span>
             <div className="text-5xl font-bold text-indigo-400 mt-2">
               {isLoading ? "--:--" : formatTime(focusTime)}
+            </div>
+          </div>
+
+          {/* 7. GPA WIDGET */}
+          <div 
+            onClick={() => setActiveTab("Grades")}
+            className="bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col justify-between min-h-[140px] cursor-pointer hover:bg-white/5 transition-colors"
+          >
+            <span className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Current GPA</span>
+            <div className="text-5xl font-bold text-[#f1c40f] mt-2">
+              {isLoading ? "--" : (gpa > 0 ? gpa.toFixed(2) : "0.00")}
             </div>
           </div>
 
