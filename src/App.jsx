@@ -13,7 +13,10 @@ function App() {
   const [isChecking, setIsChecking] = useState(true)
   const [showSplash, setShowSplash] = useState(false)
   
+  // Stany dla odzyskiwania hasła ORAZ nowych zaproszeń
   const [isRecoveryMode, setIsRecoveryMode] = useState(false)
+  const [isInviteMode, setIsInviteMode] = useState(false)
+  
   const [newPassword, setNewPassword] = useState('')
   const [passwordMessage, setPasswordMessage] = useState({ type: '', text: '' })
 
@@ -23,15 +26,13 @@ function App() {
 
   const checkSystemStatus = async (currentSession) => {
     try {
-      // Pobieramy wszystkie klucze z app_config od razu
       const { data: configData } = await supabase.from('app_config').select('key, value')
       
-      const maintConfig = configData?.find(c => c.key === 'maintenance')?.value
-      const isMaint = maintConfig?.active || false
-      setMaintenanceActive(isMaint)
+      const maint = configData?.find(c => c.key === 'maintenance')?.value
+      setMaintenanceActive(maint?.active || false)
 
-      const regConfig = configData?.find(c => c.key === 'registration')?.value
-      setRegistrationEnabled(regConfig?.enabled ?? true)
+      const reg = configData?.find(c => c.key === 'registration')?.value
+      setRegistrationEnabled(reg?.enabled ?? true)
 
       let userIsAdmin = false
       if (currentSession?.user) {
@@ -46,8 +47,12 @@ function App() {
   }
 
   useEffect(() => {
+    // Sprawdzanie trybów na podstawie hash-a w URL
     const checkRecovery = () => window.location.hash.includes('type=recovery')
+    const checkInvite = () => window.location.hash.includes('type=invite')
+    
     if (checkRecovery()) setIsRecoveryMode(true)
+    if (checkInvite()) setIsInviteMode(true)
 
     const initApp = async () => {
       try {
@@ -58,7 +63,8 @@ function App() {
         await checkSystemStatus(initialSession)
         setIsChecking(false)
         
-        if (initialSession && !checkRecovery()) {
+        // Pokaż splash screen tylko jeśli to normalne wejście
+        if (initialSession && !checkRecovery() && !checkInvite()) {
           setShowSplash(true)
         }
       } catch (error) {
@@ -83,7 +89,11 @@ function App() {
           setIsRecoveryMode(true)
           setShowSplash(false)
         } else if (event === 'SIGNED_IN') {
-          if (wasLoggedOut && !checkRecovery() && !isRecoveryMode) {
+          // Jeśli ktoś właśnie się zalogował z linku z zaproszeniem
+          if (checkInvite()) {
+            setIsInviteMode(true)
+            setShowSplash(false)
+          } else if (wasLoggedOut && !checkRecovery() && !checkInvite() && !isRecoveryMode && !isInviteMode) {
             setShowSplash(true)
           }
         }
@@ -95,16 +105,17 @@ function App() {
 
   const handlePasswordUpdate = async (e) => {
     e.preventDefault()
-    setPasswordMessage({ type: 'info', text: 'Updating password...' })
+    setPasswordMessage({ type: 'info', text: 'Saving password...' })
     
     const { error } = await supabase.auth.updateUser({ password: newPassword })
     
     if (error) {
       setPasswordMessage({ type: 'error', text: error.message })
     } else {
-      setPasswordMessage({ type: 'success', text: 'Password updated! Redirecting to the app...' })
+      setPasswordMessage({ type: 'success', text: 'Password saved! Redirecting to the app...' })
       setTimeout(() => {
         setIsRecoveryMode(false)
+        setIsInviteMode(false)
         window.location.hash = '' 
         setShowSplash(true) 
       }, 2000)
@@ -115,19 +126,28 @@ function App() {
     return <div className="bg-[#2b2b2b] min-h-screen"></div> 
   }
 
-  if (isRecoveryMode) {
+  // WSPÓLNY WIDOK DLA USTAWIANIA HASŁA (Zaproszenie / Reset)
+  if (isRecoveryMode || isInviteMode) {
     return (
       <div className="bg-[#2b2b2b] min-h-screen text-white flex flex-col items-center justify-center p-6">
         <div className="bg-[#1c1c1e] p-8 rounded-3xl w-full max-w-md shadow-2xl border border-white/10">
           <div className="flex justify-center mb-6">
              <img src="/icon.png" alt="Splanner Logo" className="w-16 h-16 rounded-2xl shadow-lg" />
           </div>
-          <h2 className="text-2xl font-bold mb-2 text-center">Reset Password</h2>
-          <p className="text-gray-400 text-sm mb-6 text-center">Enter your new password below to regain access.</p>
+          <h2 className="text-2xl font-bold mb-2 text-center">
+            {isInviteMode ? "Welcome to Splanner" : "Reset Password"}
+          </h2>
+          <p className="text-gray-400 text-sm mb-6 text-center">
+            {isInviteMode 
+              ? "Please set a secure password to activate your new account." 
+              : "Enter your new password below to regain access."}
+          </p>
           
           <form onSubmit={handlePasswordUpdate} className="flex flex-col gap-4">
             <div>
-              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1 ml-1 block">New Password</label>
+              <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1 ml-1 block">
+                {isInviteMode ? "Set Password" : "New Password"}
+              </label>
               <input 
                 type="password" 
                 value={newPassword}
@@ -146,7 +166,7 @@ function App() {
             )}
 
             <button type="submit" className="w-full bg-[#3498db] hover:bg-[#2980b9] text-white font-bold py-3 rounded-xl transition-colors mt-2 shadow-lg shadow-[#3498db]/20">
-              Update Password
+              {isInviteMode ? "Save Password & Enter App" : "Update Password"}
             </button>
           </form>
         </div>
@@ -162,7 +182,6 @@ function App() {
         {!session ? (
           <div className="flex-1 flex flex-col justify-center relative">
             
-            {/* OSTRZEŻENIE MAINTENANCE W FORMIE ZAAWANSOWANEJ RAMKI */}
             {maintenanceActive && (
               <div className="absolute top-[calc(env(safe-area-inset-top)+1.5rem)] left-0 w-full px-6 flex justify-center z-50 pointer-events-none">
                 <div className="bg-yellow-500 text-black px-5 py-4 rounded-2xl shadow-2xl w-full max-w-sm text-center text-sm font-bold pointer-events-auto border border-yellow-400">

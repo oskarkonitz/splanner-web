@@ -9,13 +9,15 @@ export default function LoginView({ registrationEnabled = true }) {
   const [isLoading, setIsLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState(null)
   const [successMsg, setSuccessMsg] = useState(null)
+  
   const [isInvited, setIsInvited] = useState(false)
 
   // Sprawdzanie czy użytkownik wszedł z linku zapraszającego
   useEffect(() => {
-    if (window.location.search.includes('invite=true') || window.location.hash.includes('invite=true')) {
-      setIsInvited(true)
-      setIsRegistering(true) 
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('invite') === 'true' || window.location.hash.includes('invite=true')) {
+      setIsInvited(true);
+      setIsRegistering(true); 
     }
   }, [])
 
@@ -87,9 +89,16 @@ export default function LoginView({ registrationEnabled = true }) {
           {isForgotPassword 
             ? "Enter your email to receive a password reset link" 
             : isRegistering 
-              ? "Create your account" 
+              ? (isInvited ? "Complete your invited account" : "Create your account") 
               : "Sign in to continue"}
         </p>
+        
+        {/* Odznaka zaproszenia */}
+        {isInvited && !isForgotPassword && (
+          <span className="mt-2 text-[10px] bg-[#3498db]/20 text-[#3498db] px-2 py-1 rounded-full font-bold uppercase tracking-wider border border-[#3498db]/30">
+            Invitation Active
+          </span>
+        )}
       </div>
 
       {/* Formularz */}
@@ -182,7 +191,9 @@ export default function LoginView({ registrationEnabled = true }) {
           >
             No account? Register here
           </button>
-        ) : null}
+        ) : (
+          <p className="text-xs text-gray-500 italic">Registration is currently private.</p>
+        )}
       </div>
 
     </div>

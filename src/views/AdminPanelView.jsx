@@ -115,15 +115,15 @@ export default function AdminPanelView({ onBack }) {
     updateAppConfig('registration', { enabled: !current.enabled });
   };
   
+  // WYSYŁANIE OFICJALNEGO ZAPROSZENIA PRZEZ EDGE FUNCTION
   const handleSendInvite = async () => {
     setIsInviting(true);
     try {
-      const { error } = await supabase.auth.signInWithOtp({ 
-        email: inviteEmail,
-        options: { emailRedirectTo: `${window.location.origin}?invite=true` }
+      const { data, error } = await supabase.functions.invoke('invite-user', {
+        body: { email: inviteEmail }
       });
       if (error) throw error;
-      alert('Invitation (Magic Link) sent successfully via email!');
+      alert(`Official invitation sent successfully to ${inviteEmail}!`);
       setInviteEmail('');
     } catch (err) {
       console.error(err);
@@ -294,13 +294,13 @@ export default function AdminPanelView({ onBack }) {
 
                 <div className="bg-[#1c1c1e] p-5 rounded-2xl border border-white/5 space-y-4 mt-6">
                   <div>
-                    <h4 className="text-white font-medium mb-1">Invite User Manually</h4>
-                    <p className="text-sm text-gray-400">Send an invitation email or copy an invite link to bypass the registration block.</p>
+                    <h4 className="text-white font-medium mb-1">Invite User via Official API</h4>
+                    <p className="text-sm text-gray-400">Sends a formal Supabase invitation bypassing the registration block.</p>
                   </div>
                   
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Send Magic Link via Email</label>
+                      <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Recipient Email</label>
                       <div className="flex flex-col sm:flex-row gap-2">
                         <input
                           type="email"
@@ -314,7 +314,7 @@ export default function AdminPanelView({ onBack }) {
                           disabled={isInviting || !inviteEmail}
                           className="bg-[#3498db] text-white px-5 py-2.5 rounded-xl font-bold hover:bg-[#2980b9] transition-colors disabled:opacity-50 whitespace-nowrap"
                         >
-                          {isInviting ? 'Sending...' : 'Send Invite'}
+                          {isInviting ? 'Sending...' : 'Send Official Invite'}
                         </button>
                       </div>
                     </div>
