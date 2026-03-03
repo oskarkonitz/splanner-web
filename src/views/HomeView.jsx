@@ -72,6 +72,34 @@ export default function HomeView() {
   const [isToastDismissed, setIsToastDismissed] = useState(false);
   const [showAdminToast, setShowAdminToast] = useState(false);
 
+  // --- STANY DLA POWIADOMIENIA WINDOWS ---
+  const [showWindowsToast, setShowWindowsToast] = useState(false);
+  const [isWindows, setIsWindows] = useState(false);
+
+  // --- STANY I LOGIKA DLA SLIDERA "LATER TODAY" ---
+  const [laterTodayIndex, setLaterTodayIndex] = useState(0);
+
+  const rawLaterItems = useMemo(() => upcomingToday.slice(1), [upcomingToday]);
+  const displayLaterItems = useMemo(() => {
+    // Jeżeli mamy tylko 2 elementy, dublujemy listę, by karuzela mogła bezpiecznie obracać domy poza widokiem
+    if (rawLaterItems.length === 2) return [...rawLaterItems, ...rawLaterItems];
+    return rawLaterItems;
+  }, [rawLaterItems]);
+
+  useEffect(() => {
+    if (displayLaterItems.length > 1) {
+      const interval = setInterval(() => {
+        setLaterTodayIndex(prev => (prev + 1) % displayLaterItems.length);
+      }, 4000);
+      return () => clearInterval(interval);
+    }
+  }, [displayLaterItems.length]);
+
+  useEffect(() => {
+    setLaterTodayIndex(0);
+  }, [upcomingToday]);
+
+
   // --- OPÓŹNIENIE DLA TOAST MESSAGE ---
   useEffect(() => {
     if (appConfig?.toast_message?.active && !isToastDismissed) {
@@ -83,10 +111,6 @@ export default function HomeView() {
     }
   }, [appConfig?.toast_message?.active, isToastDismissed]);
   
-  // --- STANY DLA POWIADOMIENIA WINDOWS ---
-  const [showWindowsToast, setShowWindowsToast] = useState(false);
-  const [isWindows, setIsWindows] = useState(false);
-
   const mainTabs = ["Dashboard", "Plan", "Todo", "Schedule"];
   const moreTabs = ["Task History", "Exam Database & Archive", "Achievements", "Subjects & Semesters", "Grades", "Subscriptions"];
 
@@ -341,7 +365,7 @@ export default function HomeView() {
       })
     ];
     return combined;
-  }, [dailyTasks, topics, taskLists, exams, subjects]); // <-- currentTime usunięte stąd
+  }, [dailyTasks, topics, taskLists, exams, subjects]);
 
   const shoppingItemsList = useMemo(() => {
     if (!dailyTasks || !taskLists) return [];
@@ -561,17 +585,27 @@ export default function HomeView() {
         progress = Math.max(0, Math.min(1, (currentMins - startMins) / (endMins - startMins)));
         
         const diff = endMins - currentMins;
-        const h = Math.floor(diff / 60);
-        const m = Math.floor(diff % 60);
-        countdownStr = h > 0 ? `Ends in ${h}h ${m}m` : `Ends in ${m}m`;
+        // Pokaż sekundy jeśli zostało poniżej 1 minuty
+        if (diff > 0 && diff < 1) {
+          countdownStr = `Ends in ${Math.floor(diff * 60)}s`;
+        } else {
+          const h = Math.floor(diff / 60);
+          const m = Math.floor(diff % 60);
+          countdownStr = h > 0 ? `Ends in ${h}h ${m}m` : `Ends in ${m}m`;
+        }
       } else if (currentMins < startMins) {
         if ((startMins - currentMins) <= 5 && (startMins - currentMins) > 0) {
           isStartingSoon = true;
         }
         const diff = startMins - currentMins;
-        const h = Math.floor(diff / 60);
-        const m = Math.floor(diff % 60);
-        countdownStr = h > 0 ? `Starts in ${h}h ${m}m` : `Starts in ${m}m`;
+        // Pokaż sekundy jeśli zostało poniżej 1 minuty
+        if (diff > 0 && diff < 1) {
+          countdownStr = `Starts in ${Math.floor(diff * 60)}s`;
+        } else {
+          const h = Math.floor(diff / 60);
+          const m = Math.floor(diff % 60);
+          countdownStr = h > 0 ? `Starts in ${h}h ${m}m` : `Starts in ${m}m`;
+        }
       }
     } else {
       const daysToEvent = getDaysUntil(nowNextItem.dateStr);
@@ -685,14 +719,14 @@ export default function HomeView() {
           </div>
         </div>
 
-        {/* GŁÓWNA SIATKA WIDGETÓW */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+        {/* GŁÓWNA SIATKA WIDGETÓW W UKŁADZIE MASONRY (columns) */}
+        <div className="columns-1 lg:columns-2 xl:columns-3 gap-6 space-y-6">
           
           {/* 1. NOW / NEXT WIDGET */}
           {nowNextItem ? (
             <div 
               onClick={() => setActiveTab("Schedule")} 
-              className="relative bg-[#1c1c1e] rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] cursor-pointer hover:bg-white/5 transition-colors"
+              className="break-inside-avoid relative bg-[#1c1c1e] rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] cursor-pointer hover:bg-white/5 transition-colors"
             >
               {isStartingSoon && (
                 <>
@@ -740,21 +774,49 @@ export default function HomeView() {
                   </span>
                 </div>
                 
-                {/* ZAPLANOWANE NA DZISIAJ */}
+                {/* ZAPLANOWANE NA DZISIAJ - Z ANIMOWANYM SLIDEREM CSS (Z dołu do góry) */}
                 {isToday && upcomingToday.length > 1 && (
                   <div className="mt-2 pt-3 border-t border-white/10 flex flex-col gap-2">
                     <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Later Today</span>
-                    {upcomingToday.slice(1).slice(0, 3).map((item, idx) => (
-                      <div key={idx} className="flex items-center justify-between text-xs">
+                    
+                    {displayLaterItems.length === 1 ? (
+                      <div className="flex items-center justify-between text-xs w-full">
                         <div className="flex items-center gap-2 truncate pr-2">
-                          <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: item.hexColor }}></div>
-                          <span className="text-gray-300 truncate">{item.title}</span>
+                          <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: displayLaterItems[0].hexColor }}></div>
+                          <span className="text-gray-300 truncate">{displayLaterItems[0].title}</span>
                         </div>
-                        <span className="text-gray-500 shrink-0">{item.startTime}</span>
+                        <span className="text-gray-500 shrink-0">{displayLaterItems[0].startTime}</span>
                       </div>
-                    ))}
-                    {upcomingToday.length > 4 && (
-                      <span className="text-[10px] text-gray-500 mt-1">+{upcomingToday.length - 4} more...</span>
+                    ) : (
+                      <div className="relative h-[20px] w-full overflow-hidden">
+                        {displayLaterItems.map((item, i) => {
+                          let offset = i - laterTodayIndex;
+                          const len = displayLaterItems.length;
+                          
+                          // Znormalizuj offset dla gładkiego przeskoku karuzeli
+                          while (offset < -Math.floor(len/2)) offset += len;
+                          while (offset > Math.floor((len-1)/2)) offset -= len;
+                          
+                          // Dla przesunięcia z dołu do góry, offset jest dodatni gdy karta jest PONIŻEJ.
+                          // Zatem jeśli offset >= 1, element znajduje się pod spodem lub właśnie tam wskoczył.
+                          const isJumping = offset < -1 || offset >= 1; 
+                          const translateY = `${offset * 100}%`;
+                          
+                          return (
+                            <div 
+                              key={`${i}-${item.title}`}
+                              className={`absolute inset-0 flex items-center justify-between text-xs w-full ${isJumping ? '' : 'transition-transform duration-500 ease-in-out'}`}
+                              style={{ transform: `translateY(${translateY})` }}
+                            >
+                              <div className="flex items-center gap-2 truncate pr-2">
+                                <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: item.hexColor }}></div>
+                                <span className="text-gray-300 truncate">{item.title}</span>
+                              </div>
+                              <span className="text-gray-500 shrink-0">{item.startTime}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
                     )}
                   </div>
                 )}
@@ -764,7 +826,7 @@ export default function HomeView() {
           ) : (
             <div 
               onClick={() => setActiveTab("Schedule")} 
-              className="bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col gap-4 min-h-[140px] cursor-pointer hover:bg-white/5 transition-colors"
+              className="break-inside-avoid bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col gap-4 min-h-[140px] cursor-pointer hover:bg-white/5 transition-colors"
             >
               <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Now / Next</span>
               <div className="flex-1 flex items-center justify-center text-green-400 font-semibold text-lg">
@@ -776,7 +838,7 @@ export default function HomeView() {
           {/* 2. NEXT EXAM WIDGET */}
           <div 
             onClick={() => setActiveTab("Plan")} 
-            className="bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] cursor-pointer hover:bg-white/5 transition-colors"
+            className="break-inside-avoid bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] cursor-pointer hover:bg-white/5 transition-colors"
           >
             <div className="flex justify-between items-center mb-4">
               <span className="text-xs font-bold uppercase tracking-wider" style={{ color: examState.hexColor }}>Next Exam</span>
@@ -823,7 +885,7 @@ export default function HomeView() {
                 setActiveTab('Todo');
               }
             }}
-            className={`bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] max-h-[180px] overflow-hidden ${todayTasksList.length > 0 ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''}`}
+            className={`break-inside-avoid bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] max-h-[180px] overflow-hidden ${todayTasksList.length > 0 ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''}`}
           >
             <div className="flex items-center justify-between mb-3 shrink-0">
               <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Tasks for Today</span>
@@ -873,7 +935,7 @@ export default function HomeView() {
               setTargetTodoList(settings?.main_shopping_list_id || 'all'); 
               setActiveTab('Todo');
             }} 
-            className={`bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] max-h-[180px] overflow-hidden ${shoppingItemsList.length > 0 ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''}`}
+            className={`break-inside-avoid bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] max-h-[180px] overflow-hidden ${shoppingItemsList.length > 0 ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''}`}
           >
             <div className="flex items-center justify-between mb-3 shrink-0">
               <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Shopping List</span>
@@ -926,7 +988,7 @@ export default function HomeView() {
           {/* 5. NEXT SUBSCRIPTION WIDGET */}
           <div 
             onClick={() => { if(nextSubscription) setActiveTab('Subscriptions') }}
-            className={`bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] ${nextSubscription ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''}`}
+            className={`break-inside-avoid bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] ${nextSubscription ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''}`}
           >
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Next Payment</span>
@@ -966,7 +1028,7 @@ export default function HomeView() {
           </div>
 
           {/* 6. TODAY'S FOCUS WIDGET */}
-          <div className="bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col justify-between min-h-[140px]">
+          <div className="break-inside-avoid bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col justify-between min-h-[140px]">
             <span className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Today's Focus</span>
             <div className="text-5xl font-bold text-indigo-400 mt-2">
               {isLoading ? "--:--" : formatTime(focusTime)}
@@ -976,7 +1038,7 @@ export default function HomeView() {
           {/* 7. GPA WIDGET */}
           <div 
             onClick={() => setActiveTab("Grades")}
-            className="bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col justify-between min-h-[140px] cursor-pointer hover:bg-white/5 transition-colors"
+            className="break-inside-avoid bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col justify-between min-h-[140px] cursor-pointer hover:bg-white/5 transition-colors"
           >
             <span className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Current GPA</span>
             <div className="text-5xl font-bold text-[#f1c40f] mt-2">
@@ -1154,7 +1216,7 @@ export default function HomeView() {
             {activeTab === "Dashboard" && renderDashboardWidgets()}
             
             {activeTab === "More" && (
-              <div className="flex flex-col h-full gap-4">
+              <div className="flex flex-col min-h-full gap-4">
                 <div className="flex flex-col gap-3">
                   {moreTabs.map(item => (
                     <button 
@@ -1172,7 +1234,7 @@ export default function HomeView() {
                 </div>
                 
                 {/* PRZYCISK FEEDBACKU W MENU "MORE" NA MOBILE */}
-                <div className="mt-auto md:hidden pt-4 border-t border-gray-800 pb-8">
+                <div className="mt-auto md:hidden pt-4 border-t border-gray-800 pb-2">
                   <button 
                     onClick={() => setActiveTab("Feedback")}
                     className="w-full flex justify-center items-center gap-2 p-4 rounded-2xl bg-[#1c1c1e]/50 text-gray-400 border border-dashed border-gray-700 active:scale-95 transition-transform"

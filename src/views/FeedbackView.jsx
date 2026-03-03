@@ -43,7 +43,8 @@ export default function FeedbackView({ onBack }) {
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto px-4 md:px-10 py-6">
+      {/* Dodałem tutaj 'pb-28' dla telefonów, aby zostawić margines na dolny pasek z HomeView */}
+      <main className="flex-1 overflow-y-auto px-4 md:px-10 py-6 pb-28 md:pb-10">
         <div className="max-w-3xl mx-auto space-y-10">
           
           {/* SEKCJA: NOWE ZGŁOSZENIE */}

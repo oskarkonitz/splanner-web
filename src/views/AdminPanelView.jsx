@@ -29,7 +29,17 @@ export default function AdminPanelView({ onBack }) {
   const [inviteEmail, setInviteEmail] = useState('');
   const [isInviting, setIsInviting] = useState(false);
 
-  // Filtrowanie i sortowanie zgłoszeń (zabezpieczone przed undefined)
+  // Stany dla Systemu Użytkowników
+  const [usersList, setUsersList] = useState([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  
+  // NOWE: Stany dla Modalu Użytkownika
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [selectedUserStats, setSelectedUserStats] = useState(null);
+  const [isLoadingUserStats, setIsLoadingUserStats] = useState(false);
+
+  // Filtrowanie i sortowanie zgłoszeń
   const sortedFeedback = useMemo(() => {
     const safeFeedback = feedback || [];
     return [...safeFeedback].sort((a, b) => {
@@ -38,6 +48,13 @@ export default function AdminPanelView({ onBack }) {
       return new Date(b.created_at) - new Date(a.created_at);
     });
   }, [feedback]);
+
+  // Filtrowanie użytkowników
+  const filteredUsers = useMemo(() => {
+    return usersList.filter(user => 
+      user.email?.toLowerCase().includes(userSearchQuery.toLowerCase())
+    );
+  }, [usersList, userSearchQuery]);
 
   // Synchronizacja lokalnych stanów configu
   useEffect(() => {
@@ -52,6 +69,13 @@ export default function AdminPanelView({ onBack }) {
     }
   }, [appConfig]);
 
+  // Pobieranie użytkowników przy wejściu w zakładkę Users
+  useEffect(() => {
+    if (activeTab === 'Users') {
+      fetchUsers();
+    }
+  }, [activeTab]);
+
   if (!isAdmin) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-red-500 h-full bg-[#2b2b2b] p-6">
@@ -63,7 +87,7 @@ export default function AdminPanelView({ onBack }) {
     );
   }
 
-  // --- MANUALNE POBIERANIE STATYSTYK ---
+  // --- MANUALNE POBIERANIE STATYSTYK GLOBALNYCH ---
   const fetchGlobalStats = async () => {
     setIsLoadingStats(true);
     try {
@@ -76,6 +100,86 @@ export default function AdminPanelView({ onBack }) {
     } finally {
       setIsLoadingStats(false);
     }
+  };
+
+  // --- POBIERANIE UŻYTKOWNIKÓW ---
+  const fetchUsers = async () => {
+    setIsLoadingUsers(true);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('last_sign_in_at', { ascending: false, nullsFirst: false });
+      
+      if (error) throw error;
+      setUsersList(data || []);
+    } catch (err) {
+      console.error("Błąd pobierania użytkowników:", err);
+    } finally {
+      setIsLoadingUsers(false);
+    }
+  };
+
+  // --- HANDLERY DLA MODALU UŻYTKOWNIKA ---
+  const openUserModal = (user) => {
+    setSelectedUser(user);
+    setSelectedUserStats(null); // Reset statystyk przy otwarciu nowego
+  };
+
+  const fetchSpecificUserStats = async (userId) => {
+    setIsLoadingUserStats(true);
+    try {
+      const { data, error } = await supabase.rpc('get_user_personal_stats', { user_uuid: userId });
+      if (error) throw error;
+      setSelectedUserStats(data);
+    } catch (err) {
+      console.error("Błąd pobierania statystyk użytkownika:", err);
+      alert("Aby to zadziałało, musisz dodać funkcję get_user_personal_stats w Supabase.");
+    } finally {
+      setIsLoadingUserStats(false);
+    }
+  };
+
+  const handleToggleAdminStatus = async () => {
+    if (!selectedUser) return;
+    const isCurrentlyAdmin = selectedUser.is_admin;
+    if (!window.confirm(`Are you sure you want to ${isCurrentlyAdmin ? 'revoke' : 'grant'} admin rights for ${selectedUser.email}?`)) return;
+    
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ is_admin: !isCurrentlyAdmin })
+        .eq('id', selectedUser.id);
+        
+      if (error) throw error;
+      
+      // Aktualizuj lokalne stany
+      const updatedUser = { ...selectedUser, is_admin: !isCurrentlyAdmin };
+      setSelectedUser(updatedUser);
+      setUsersList(usersList.map(u => u.id === selectedUser.id ? updatedUser : u));
+    } catch (err) {
+      console.error("Błąd zmiany uprawnień:", err);
+      alert("Failed to update user role.");
+    }
+  };
+
+  const handleSendPasswordReset = async () => {
+    if (!selectedUser || !selectedUser.email) return;
+    if (!window.confirm(`Send a password reset email to ${selectedUser.email}?`)) return;
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(selectedUser.email);
+      if (error) throw error;
+      alert(`Password reset email sent to ${selectedUser.email}.`);
+    } catch (err) {
+      console.error("Błąd resetu hasła:", err);
+      alert("Failed to send password reset email.");
+    }
+  };
+
+  const handleDeleteUser = () => {
+    // Usunięcie konta autoryzacyjnego wymaga Edge Function
+    alert("Delete Action: Modifying auth.users requires a secure Edge Function with a service_role key. You need to implement an 'admin-delete-user' function in Supabase first.");
   };
 
   // --- HANDLERY KONFIGURACJI ---
@@ -197,7 +301,7 @@ export default function AdminPanelView({ onBack }) {
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
           </div>
-          {['General', 'Distribution', 'Announcements', 'System', 'Analytics', 'Feedback'].map(tab => (
+          {['General', 'Distribution', 'Announcements', 'System', 'Users', 'Analytics', 'Feedback'].map(tab => (
             <button
               key={tab}
               onClick={() => handleTabClick(tab)}
@@ -321,6 +425,77 @@ export default function AdminPanelView({ onBack }) {
                   </div>
                 </div>
 
+              </div>
+            )}
+
+            {/* ZAKŁADKA UŻYTKOWNIKÓW */}
+            {activeTab === 'Users' && (
+              <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-800 pb-2">
+                  <h3 className="text-xl font-bold text-white">Manage Users</h3>
+                  <button 
+                    onClick={fetchUsers} 
+                    disabled={isLoadingUsers}
+                    className="text-sm text-[#3498db] hover:text-[#2980b9] transition-colors disabled:opacity-50"
+                  >
+                    {isLoadingUsers ? 'Refreshing...' : 'Refresh List'}
+                  </button>
+                </div>
+
+                <div className="bg-[#1c1c1e] p-2 rounded-2xl border border-white/5 flex items-center gap-2 mb-4">
+                  <svg className="w-5 h-5 text-gray-500 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                  <input 
+                    type="text" 
+                    placeholder="Search by email..." 
+                    value={userSearchQuery}
+                    onChange={(e) => setUserSearchQuery(e.target.value)}
+                    className="bg-transparent border-none text-white focus:outline-none w-full py-2 placeholder-gray-500"
+                  />
+                </div>
+
+                {isLoadingUsers && usersList.length === 0 ? (
+                  <div className="text-gray-500 text-center py-10 bg-[#1c1c1e] rounded-3xl border border-white/5">
+                    Loading users...
+                  </div>
+                ) : filteredUsers.length === 0 ? (
+                  <div className="text-gray-500 text-center py-10 bg-[#1c1c1e] rounded-3xl border border-white/5">
+                    No users found matching your search.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {filteredUsers.map(user => (
+                      <div 
+                        key={user.id} 
+                        onClick={() => openUserModal(user)}
+                        className="bg-[#1c1c1e] p-4 rounded-2xl border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer hover:bg-white/5 transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 font-bold ${user.is_admin ? 'bg-purple-500/20 text-purple-400' : 'bg-gray-700 text-white'}`}>
+                            {user.email ? user.email.charAt(0).toUpperCase() : '?'}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-bold text-white truncate max-w-[200px] sm:max-w-[300px]">
+                                {user.email || 'No email'}
+                              </h4>
+                              {user.is_admin && (
+                                <span className="text-[10px] font-bold bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded-md uppercase tracking-wide">
+                                  Admin
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-gray-500 text-xs mt-0.5">
+                              Last login: {user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleString() : 'Never'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-gray-500 shrink-0">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -482,6 +657,116 @@ export default function AdminPanelView({ onBack }) {
                       {isReplying ? 'Saving...' : 'Update Ticket'}
                     </button>
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* NOWE: MODAL DO OBSŁUGI UŻYTKOWNIKA */}
+      {selectedUser && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex justify-center items-center p-4">
+          <div className="bg-[#1c1c1e] rounded-3xl w-full max-w-xl max-h-[90vh] overflow-y-auto border border-gray-700 shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
+            
+            <div className="flex justify-between items-center p-6 border-b border-gray-800">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                User Details
+                {selectedUser.is_admin && <span className="text-[10px] font-bold bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded-md uppercase tracking-wide">Admin</span>}
+              </h2>
+              <button onClick={() => setSelectedUser(null)} className="text-gray-400 hover:text-white p-2">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Sekcja Info */}
+              <div className="bg-[#2b2b2b] p-4 rounded-2xl border border-white/5 space-y-3">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full flex items-center justify-center shrink-0 font-bold bg-gray-700 text-white text-xl">
+                    {selectedUser.email ? selectedUser.email.charAt(0).toUpperCase() : '?'}
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-lg font-bold text-white truncate">{selectedUser.email}</h3>
+                    <p className="text-xs text-gray-500 truncate mt-0.5">ID: {selectedUser.id}</p>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-700/50 mt-2 text-sm">
+                  <div>
+                    <span className="text-gray-500 block text-xs">Joined</span>
+                    <span className="text-gray-300">{new Date(selectedUser.created_at).toLocaleDateString()}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 block text-xs">Last Active</span>
+                    <span className="text-gray-300">{selectedUser.last_sign_in_at ? new Date(selectedUser.last_sign_in_at).toLocaleString() : 'Never'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sekcja Statystyk */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-gray-500 uppercase">App Usage Stats</span>
+                  <button 
+                    onClick={() => fetchSpecificUserStats(selectedUser.id)}
+                    disabled={isLoadingUserStats}
+                    className="text-xs font-bold text-[#3498db] hover:text-[#2980b9] transition-colors"
+                  >
+                    {isLoadingUserStats ? 'Loading...' : 'Load Stats'}
+                  </button>
+                </div>
+                
+                {selectedUserStats ? (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-[#2b2b2b] p-4 rounded-xl border border-white/5 text-center">
+                      <span className="text-gray-400 text-xs font-bold uppercase tracking-wider block mb-1">Total Tasks</span>
+                      <span className="text-2xl font-black text-white">{selectedUserStats.tasks}</span>
+                    </div>
+                    <div className="bg-[#2b2b2b] p-4 rounded-xl border border-white/5 text-center">
+                      <span className="text-gray-400 text-xs font-bold uppercase tracking-wider block mb-1">Total Exams</span>
+                      <span className="text-2xl font-black text-white">{selectedUserStats.exams}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-[#2b2b2b] p-4 rounded-xl border border-white/5 text-center text-sm text-gray-500">
+                    Click "Load Stats" to fetch this user's data from the database.
+                  </div>
+                )}
+              </div>
+
+              {/* Sekcja Akcji */}
+              <div className="border-t border-gray-800 pt-6">
+                <span className="text-xs font-bold text-[#e74c3c] uppercase block mb-4">Danger Zone & Admin Actions</span>
+                
+                <div className="space-y-3">
+                  <button 
+                    onClick={handleToggleAdminStatus}
+                    className={`w-full py-3 px-4 rounded-xl font-bold flex items-center justify-between transition-colors border ${
+                      selectedUser.is_admin 
+                        ? 'bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/20' 
+                        : 'bg-purple-500/10 text-purple-400 border-purple-500/20 hover:bg-purple-500/20'
+                    }`}
+                  >
+                    <span>{selectedUser.is_admin ? 'Revoke Admin Privileges' : 'Grant Admin Privileges'}</span>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+                  </button>
+
+                  <button 
+                    onClick={handleSendPasswordReset}
+                    className="w-full bg-[#2b2b2b] hover:bg-gray-700 text-white py-3 px-4 rounded-xl font-bold flex items-center justify-between transition-colors border border-gray-700"
+                  >
+                    <span>Send Password Reset Email</span>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                  </button>
+
+                  <button 
+                    onClick={handleDeleteUser}
+                    className="w-full bg-red-500/5 hover:bg-red-500/10 text-gray-500 hover:text-red-500 py-3 px-4 rounded-xl font-bold flex items-center justify-between transition-colors border border-red-500/10 hover:border-red-500/30"
+                  >
+                    <span>Delete User Account</span>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                  </button>
                 </div>
               </div>
             </div>
