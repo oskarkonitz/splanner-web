@@ -461,7 +461,8 @@ export function DataProvider({ children, session }) {
           room: e.room,
           type: e.type,
           period_start: null,
-          period_end: null
+          period_end: null,
+          frequency: e.frequency || 'weekly'
         }));
         await supabase.from('schedule_entries').insert(entriesToInsert);
       }

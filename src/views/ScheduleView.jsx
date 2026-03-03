@@ -3,7 +3,7 @@ import { useData } from '../context/DataContext'
 import ExamFormModal from '../components/ExamFormModal'
 import EventFormModal from '../components/EventFormModal'
 import SubjectFormModal from '../components/SubjectFormModal'
-import NoteEditorModal from '../components/NoteEditorModal' // DODANE
+import NoteEditorModal from '../components/NoteEditorModal' 
 
 const START_HOUR = 0;
 const END_HOUR = 24;
@@ -24,11 +24,22 @@ const getMonday = (d) => {
   return date;
 };
 
+// DODANE: Funkcja do sprawdzania, ile tygodni minęło między dwoma datami (żeby ustalić tydzień A/B)
+const getWeekDiff = (startDateStr, currentDateStr) => {
+  if (!startDateStr || !currentDateStr) return 0;
+  const start = getMonday(new Date(startDateStr));
+  const current = getMonday(new Date(currentDateStr));
+  start.setHours(0, 0, 0, 0);
+  current.setHours(0, 0, 0, 0);
+  const diffInDays = Math.round((current - start) / (1000 * 60 * 60 * 24));
+  return Math.floor(diffInDays / 7);
+};
+
 export default function ScheduleView({ onBack }) {
   const { 
     subjects, scheduleEntries, exams, customEvents, cancellations, 
     semesters, eventLists, deleteExam, deleteCustomEvent,
-    scheduleNotes, saveScheduleNote // DODANE - z Contextu
+    scheduleNotes, saveScheduleNote 
   } = useData();
 
   const [currentWeekMonday, setCurrentWeekMonday] = useState(() => getMonday(new Date()));
@@ -40,13 +51,11 @@ export default function ScheduleView({ onBack }) {
   const [showFilters, setShowFilters] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
 
-  // Stany Modali
   const [showExamForm, setShowExamForm] = useState(false);
   const [showEventForm, setShowEventForm] = useState(false);
   const [showSubjectForm, setShowSubjectForm] = useState(false);
   const [formInitialData, setFormInitialData] = useState(null);
   
-  // Stan Notatnika (DODANE)
   const [noteModalData, setNoteModalData] = useState(null);
 
   const scrollRef = useRef(null);
@@ -72,12 +81,14 @@ export default function ScheduleView({ onBack }) {
     if (!subjects) return result;
 
     const subjectsCache = subjects.reduce((acc, s) => ({ ...acc, [s.id]: s }), {});
+    // DODANE: Cache dla semestrów, by wyciągnąć ich datę startu
+    const semestersCache = (semesters || []).reduce((acc, s) => ({ ...acc, [s.id]: s }), {});
+    
     const weekEndStr = toDateString(weekDates[6]);
     const weekStartStr = toDateString(weekDates[0]);
 
     const cancels = new Set((cancellations || []).map(c => `${c.entry_id}_${c.date}`));
     
-    // DODANE: Mapa notatek dla szybkiego dostępu (entry_id + date)
     const notesMap = (scheduleNotes || []).reduce((acc, n) => ({
       ...acc,
       [`${n.entry_id}_${n.date}`]: n.content
@@ -96,6 +107,20 @@ export default function ScheduleView({ onBack }) {
       if (subject.end_datetime && entryDateStr > subject.end_datetime.substring(0, 10)) return;
       if (cancels.has(`${entry.id}_${entryDateStr}`)) return;
 
+      // DODANE: Logika sprawdzania częstotliwości (A/B)
+      const frequency = entry.frequency || 'weekly';
+      if (frequency !== 'weekly') {
+        const semester = semestersCache[subject.semester_id];
+        // Bierzemy datę startu semestru jako bazową. Jak jej nie ma, bierzemy datę startu przedmiotu.
+        const anchorDate = semester?.start_date || subject.start_datetime?.substring(0, 10) || "2024-01-01";
+        const weekIndex = Math.abs(getWeekDiff(anchorDate, entryDateStr));
+
+        if (frequency === 'even' && weekIndex % 2 !== 0) return;
+        if (frequency === 'odd' && weekIndex % 2 === 0) return;
+        if (frequency === 'every_2_weeks' && weekIndex % 2 !== 0) return; 
+      }
+      // KONIEC DODANEJ LOGIKI
+
       const [sH, sM] = entry.start_time.split(':').map(Number);
       const [eH, eM] = entry.end_time.split(':').map(Number);
       const startVal = sH + sM / 60.0;
@@ -113,7 +138,7 @@ export default function ScheduleView({ onBack }) {
         startTime: entry.start_time,
         endTime: entry.end_time,
         subtitle: [entry.type, entry.room ? `Room ${entry.room}` : ''].filter(Boolean).join(' • '),
-        note: notesMap[`${entry.id}_${entryDateStr}`], // DODANE - przypisanie notatki
+        note: notesMap[`${entry.id}_${entryDateStr}`], 
         rawData: { entry, subject, dateStr: entryDateStr }
       });
     });
@@ -258,7 +283,7 @@ export default function ScheduleView({ onBack }) {
     });
 
     return result;
-  }, [subjects, scheduleEntries, exams, customEvents, cancellations, currentWeekMonday, weekDates, selectedSemesters, selectedLists, scheduleNotes]);
+  }, [subjects, scheduleEntries, exams, customEvents, cancellations, currentWeekMonday, weekDates, selectedSemesters, selectedLists, scheduleNotes, semesters]);
 
   const agendaItems = useMemo(() => {
     const selectedDayIdx = weekDates.findIndex(d => toDateString(d) === selectedDate);
@@ -304,7 +329,6 @@ export default function ScheduleView({ onBack }) {
   const currentDayIdx = (now.getDay() + 6) % 7;
   const currentHourVal = now.getHours() + now.getMinutes() / 60.0;
 
-  // Logika dla 'Now' i 'Next'
   const isSelectedDateToday = selectedDate === todayStr;
   const nextBlockId = isSelectedDateToday 
     ? agendaItems.find(b => b.startVal > currentHourVal)?.id 
@@ -324,7 +348,6 @@ export default function ScheduleView({ onBack }) {
     setSelectedDate(toDateString(today));
   };
 
-  // DODANE: Obsługa otwierania notatki
   const handleOpenNote = (block) => {
     setNoteModalData({
       isOpen: true,
@@ -335,7 +358,6 @@ export default function ScheduleView({ onBack }) {
     });
   };
 
-  // DODANE: Zapisywanie notatki
   const onSaveNote = async (content) => {
     if (!noteModalData) return;
     await saveScheduleNote(noteModalData.entryId, noteModalData.date, content);
@@ -348,7 +370,7 @@ export default function ScheduleView({ onBack }) {
     let items = [];
     if (block.type === 'class') {
       items = [
-        { label: "Add / Edit Note", action: () => handleOpenNote(block) }, // DODANE: Opcja w menu
+        { label: "Add / Edit Note", action: () => handleOpenNote(block) }, 
         { label: `Edit: ${block.rawData.subject.name}`, action: () => { setFormInitialData(block.rawData.subject); setShowSubjectForm(true); } },
         { label: "Cancel class (this week only)", action: () => alert("Cancel Class Placeholder"), destructive: true }
       ];
@@ -487,7 +509,6 @@ export default function ScheduleView({ onBack }) {
                   <div className="w-px bg-gray-800"></div>
                   <div className="flex-1 flex flex-col justify-center min-w-0">
                     
-                    {/* Wskaźnik NOW */}
                     {isNow && (
                       <div className="flex items-center gap-1.5 mb-1.5">
                         <span className="relative flex h-2 w-2">
@@ -498,7 +519,6 @@ export default function ScheduleView({ onBack }) {
                       </div>
                     )}
 
-                    {/* Wskaźnik NEXT */}
                     {isNext && (
                       <div className="mb-1.5">
                         <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#3498db]/20 text-[#3498db] border border-[#3498db]/30 uppercase tracking-wider">
@@ -520,7 +540,6 @@ export default function ScheduleView({ onBack }) {
                       </span>
                     )}
 
-                    {/* DODANE: Wyświetlanie notatki na mobile */}
                     {block.note && (
                       <div className="mt-2 p-2 bg-[#f1c40f]/10 border border-[#f1c40f]/20 rounded-lg">
                         <span className="text-[11px] text-[#f1c40f] font-medium break-words whitespace-normal line-clamp-4 italic">
@@ -607,13 +626,11 @@ export default function ScheduleView({ onBack }) {
                     >
                       <div className="flex justify-between items-start">
                         <span className="text-[10px] font-bold text-gray-900 dark:text-white leading-tight mb-0.5 line-clamp-2">{block.title}</span>
-                        {/* ZMIANA: Usunięto statyczną żółtą ikonkę notatki z głównego widoku. Teraz notatka jest dostępna przez nową warstwę group/note. */}
                       </div>
 
                       <span className="text-[9px] font-medium text-gray-800 dark:text-gray-300 leading-tight whitespace-pre-line">{block.timeStr}</span>
                       {block.subtitle && <span className="text-[9px] text-gray-700 dark:text-gray-400 truncate mt-0.5">{block.subtitle}</span>}
                       
-                      {/* DODANE: Rozwijana notatka (Desktop) - analogicznie do wykrzyknika */}
                       {block.note && (
                         <div className="absolute inset-0 z-20 pointer-events-none group/note">
                           <div 
@@ -720,7 +737,6 @@ export default function ScheduleView({ onBack }) {
         onClose={() => setShowSubjectForm(false)} 
       />
       
-      {/* DODANE: Modal Notatnika */}
       <NoteEditorModal 
         isOpen={noteModalData?.isOpen} 
         initialNote={noteModalData?.content} 

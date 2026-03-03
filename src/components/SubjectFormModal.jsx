@@ -48,6 +48,7 @@ export default function SubjectFormModal({ isOpen, onClose, initialData = null }
   const [slotEnd, setSlotEnd] = useState('09:30');
   const [slotRoom, setSlotRoom] = useState('');
   const [slotType, setSlotType] = useState('Lecture'); // Domyślny tekst
+  const [slotFrequency, setSlotFrequency] = useState('weekly'); // NOWE: Stan częstotliwości
 
   useEffect(() => {
     if (isOpen) {
@@ -107,6 +108,7 @@ export default function SubjectFormModal({ isOpen, onClose, initialData = null }
       setSlotEnd('09:30');
       setSlotRoom('');
       setSlotType('Lecture'); // Domyślnie proponuje słowo, można je skasować
+      setSlotFrequency('weekly'); // NOWE: Domyślnie co tydzień
     } else {
       const s = slots[index];
       setSlotDay(s.day_of_week);
@@ -114,6 +116,7 @@ export default function SubjectFormModal({ isOpen, onClose, initialData = null }
       setSlotEnd(s.end_time);
       setSlotRoom(s.room || '');
       setSlotType(s.type || '');
+      setSlotFrequency(s.frequency || 'weekly'); // NOWE: Wczytywanie częstotliwości
     }
     setActiveSlotIndex(index);
   };
@@ -124,7 +127,8 @@ export default function SubjectFormModal({ isOpen, onClose, initialData = null }
       start_time: slotStart,
       end_time: slotEnd,
       room: slotRoom,
-      type: slotType
+      type: slotType,
+      frequency: slotFrequency // NOWE: Zapis do obiektu
     };
 
     if (activeSlotIndex === -1) {
@@ -141,6 +145,15 @@ export default function SubjectFormModal({ isOpen, onClose, initialData = null }
     const updated = [...slots];
     updated.splice(index, 1);
     setSlots(updated);
+  };
+
+  const getFrequencyLabel = (freq) => {
+    switch (freq) {
+      case 'even': return 'Even weeks (A)';
+      case 'odd': return 'Odd weeks (B)';
+      case 'every_2_weeks': return 'Every 2 weeks';
+      default: return 'Weekly';
+    }
   };
 
   return (
@@ -189,7 +202,10 @@ export default function SubjectFormModal({ isOpen, onClose, initialData = null }
                   <div key={idx} className="flex items-center justify-between p-3 border-b border-gray-800 last:border-b-0 group">
                     <div className="flex-1 cursor-pointer py-1" onClick={() => openSlotEditor(idx)}>
                       <div className="font-medium text-white text-sm">{DAYS[slot.day_of_week]}</div>
-                      <div className="text-xs text-gray-400 mt-0.5">{slot.start_time} - {slot.end_time} • {slot.type} {slot.room ? `(${slot.room})` : ''}</div>
+                      <div className="text-xs text-gray-400 mt-0.5">
+                        {slot.start_time} - {slot.end_time} • {slot.type} {slot.room ? `(${slot.room})` : ''} 
+                        <span className="text-[#3498db] ml-1">[{getFrequencyLabel(slot.frequency || 'weekly')}]</span>
+                      </div>
                     </div>
                     <button onClick={() => removeSlot(idx)} className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
@@ -224,11 +240,26 @@ export default function SubjectFormModal({ isOpen, onClose, initialData = null }
               </FormRow>
               <FormRow label="Start Time"><input type="time" value={slotStart} onChange={(e) => setSlotStart(e.target.value)} className="bg-transparent text-[#3498db] focus:outline-none text-right [color-scheme:dark]" /></FormRow>
               <FormRow label="End Time"><input type="time" value={slotEnd} onChange={(e) => setSlotEnd(e.target.value)} className="bg-transparent text-[#3498db] focus:outline-none text-right [color-scheme:dark]" /></FormRow>
+              
+              {/* NOWE: Wybór częstotliwości */}
+              <FormRow label="Frequency">
+                <select 
+                  value={slotFrequency} 
+                  onChange={(e) => setSlotFrequency(e.target.value)} 
+                  className="bg-transparent text-right text-[#3498db] focus:outline-none appearance-none cursor-pointer" 
+                  dir="rtl"
+                >
+                  <option value="weekly">Every week</option>
+                  <option value="even">Even weeks (A)</option>
+                  <option value="odd">Odd weeks (B)</option>
+                  <option value="every_2_weeks">Every 2 weeks</option>
+                </select>
+              </FormRow>
+
               <FormRow label="Room">
                 <input type="text" placeholder="e.g. A-101" value={slotRoom} onChange={(e) => setSlotRoom(e.target.value)} className="w-full bg-transparent text-right text-gray-300 placeholder-gray-600 focus:outline-none" />
               </FormRow>
               
-              {/* ZMIANA: Pole "Type" jest teraz dającym się edytować polem tekstowym */}
               <FormRow label="Type" border={false}>
                 <input 
                   type="text" 
