@@ -62,12 +62,7 @@ function App() {
     
     initApp()
 
-    // Usunięto 'async' przed callbackiem - to kluczowa poprawka!
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
-      
-      // Opakowujemy naszą logikę w setTimeout(..., 0). 
-      // Dzięki temu Supabase NATYCHMIAST kończy swoją wewnętrzną pracę i zwalnia LOCKA,
-      // a nasz kod wykonuje się ułamek sekundy później w tle, nie psując sesji.
       setTimeout(() => {
         if (event === 'TOKEN_REFRESHED') return;
 
@@ -75,7 +70,6 @@ function App() {
         setSession(newSession)
         sessionRef.current = newSession 
         
-        // Odpalamy zapytanie o maintenance, ale NIE używamy tu 'await'
         checkSystemStatus(newSession)
         
         if (event === 'PASSWORD_RECOVERY') {
@@ -160,11 +154,16 @@ function App() {
       <div className="flex-1 flex flex-col relative">
         {!session ? (
           <div className="flex-1 flex flex-col justify-center relative">
+            
+            {/* OSTRZEŻENIE MAINTENANCE W FORMIE ZAAWANSOWANEJ RAMKI */}
             {maintenanceActive && (
-              <div className="absolute top-0 w-full bg-yellow-500 text-black text-center py-2 text-sm font-bold z-10 shadow-md">
-                🚧 System is currently under maintenance. Only administrators can log in.
+              <div className="absolute top-[calc(env(safe-area-inset-top)+1.5rem)] left-0 w-full px-6 flex justify-center z-50 pointer-events-none">
+                <div className="bg-yellow-500 text-black px-5 py-4 rounded-2xl shadow-2xl w-full max-w-sm text-center text-sm font-bold pointer-events-auto border border-yellow-400">
+                  🚧 System is under maintenance.<br />Only administrators can log in.
+                </div>
               </div>
             )}
+
             <LoginView />
           </div>
         ) : isMaintenanceBlocked ? (

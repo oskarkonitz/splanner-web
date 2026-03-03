@@ -940,7 +940,7 @@ export default function HomeView() {
 
         {/* GLOBALNY BANER OGŁOSZEŃ */}
         {appConfig?.global_message?.active && appConfig.global_message.text && !isBannerDismissed && (
-          <div className={`w-full px-4 py-2.5 flex items-center justify-between text-sm shadow-md z-40 shrink-0 ${
+          <div className={`w-full px-4 pb-2.5 pt-[calc(env(safe-area-inset-top)+0.625rem)] flex items-center justify-between text-sm shadow-md z-40 shrink-0 ${
             appConfig.global_message.type === 'error' ? 'bg-red-500 text-white' :
             appConfig.global_message.type === 'warning' ? 'bg-yellow-500 text-black' :
             appConfig.global_message.type === 'success' ? 'bg-green-500 text-white' :
