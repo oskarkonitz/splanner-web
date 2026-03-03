@@ -21,6 +21,31 @@ function App() {
   const [newPassword, setNewPassword] = useState('')
   const [passwordMessage, setPasswordMessage] = useState({ type: '', text: '' })
 
+  // --- STANY DLA MAINTENANCE MODE ---
+  const [maintenanceActive, setMaintenanceActive] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
+
+  // Funkcja sprawdzająca status systemu i uprawnienia użytkownika
+  const checkSystemStatus = async (currentSession) => {
+    try {
+      // 1. Pobieranie flagi przerwy technicznej z globalnego configu
+      const { data: configData } = await supabase.from('app_config').select('value').eq('key', 'maintenance').single()
+      const isMaint = configData?.value?.active || false
+      setMaintenanceActive(isMaint)
+
+      // 2. Pobieranie statusu admina (tylko jeśli jest zalogowany użytkownik)
+      let userIsAdmin = false
+      if (currentSession?.user) {
+        const { data: adminData } = await supabase.from('admins').select('user_id').eq('user_id', currentSession.user.id)
+        userIsAdmin = adminData && adminData.length > 0
+      }
+      setIsAdmin(userIsAdmin)
+
+    } catch (error) {
+      console.error("Błąd sprawdzania statusu systemu:", error)
+    }
+  }
+
   useEffect(() => {
     // Funkcja pomocnicza sprawdzająca, czy URL to link do resetu hasła
     const checkRecovery = () => window.location.hash.includes('type=recovery')
@@ -29,10 +54,15 @@ function App() {
       setIsRecoveryMode(true)
     }
 
-    // Pierwsze sprawdzenie sesji przy uruchomieniu
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // Pierwsze sprawdzenie sesji przy uruchomieniu aplikacji
+    const initApp = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
       setSession(session)
-      sessionRef.current = session // Zapisujemy sesję do refa
+      sessionRef.current = session 
+      
+      // Dodajemy sprawdzenie statusu aplikacji
+      await checkSystemStatus(session)
+
       setIsChecking(false)
       
       // Pokazujemy splash TYLKO jeśli user jest już zalogowany 
@@ -40,23 +70,24 @@ function App() {
       if (session && !checkRecovery()) {
         setShowSplash(true)
       }
-    })
+    }
+    
+    initApp()
 
     // Nasłuchiwacz zmian stanu autoryzacji
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
-      // Sprawdzamy, czy to faktycznie NOWE logowanie (przejście z braku sesji)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       const wasLoggedOut = !sessionRef.current;
       
       setSession(newSession)
-      sessionRef.current = newSession // Aktualizujemy refa na bieżąco!
+      sessionRef.current = newSession 
+      
+      // Aktualizujemy status aplikacji przy każdej zmianie logowania
+      await checkSystemStatus(newSession)
       
       if (event === 'PASSWORD_RECOVERY') {
-        // Użytkownik wszedł z linku resetującego hasło
         setIsRecoveryMode(true)
         setShowSplash(false)
       } else if (event === 'SIGNED_IN') {
-        // Użytkownik się zalogował (z LoginView).
-        // Sprawdzamy, czy to nowe logowanie i czy to nie jest fałszywy alarm w trakcie recovery.
         if (wasLoggedOut && !checkRecovery() && !isRecoveryMode) {
           setShowSplash(true)
         }
@@ -64,7 +95,7 @@ function App() {
     })
 
     return () => subscription.unsubscribe()
-  }, []) // Pusta tablica zależności, nasłuchujemy tylko raz
+  }, []) 
 
   const handlePasswordUpdate = async (e) => {
     e.preventDefault()
@@ -76,7 +107,6 @@ function App() {
       setPasswordMessage({ type: 'error', text: error.message })
     } else {
       setPasswordMessage({ type: 'success', text: 'Password updated! Redirecting to the app...' })
-      // Po sukcesie: ukrywamy tryb recovery, czyścimy URL i odpalamy Splash
       setTimeout(() => {
         setIsRecoveryMode(false)
         window.location.hash = '' 
@@ -85,7 +115,7 @@ function App() {
     }
   }
 
-  // Pusty ekran przez ułamek sekundy, gdy sprawdzamy, kim jest użytkownik (żeby uniknąć mignięcia LoginView)
+  // Pusty ekran przez ułamek sekundy, gdy sprawdzamy status
   if (isChecking) {
     return <div className="bg-[#2b2b2b] min-h-screen"></div> 
   }
@@ -96,7 +126,6 @@ function App() {
       <div className="bg-[#2b2b2b] min-h-screen text-white flex flex-col items-center justify-center p-6">
         <div className="bg-[#1c1c1e] p-8 rounded-3xl w-full max-w-md shadow-2xl border border-white/10">
           <div className="flex justify-center mb-6">
-             {/* Zakładam, że masz icon.png jak w reszcie apki */}
              <img src="/icon.png" alt="Splanner Logo" className="w-16 h-16 rounded-2xl shadow-lg" />
           </div>
           <h2 className="text-2xl font-bold mb-2 text-center">Reset Password</h2>
@@ -134,13 +163,39 @@ function App() {
     )
   }
 
-  // --- STANDARDOWY WIDOK APLIKACJI (Home / Login / Splash) ---
+  // Obliczenie, czy użytkownik jest zablokowany przez maintenance
+  const isMaintenanceBlocked = maintenanceActive && !isAdmin;
+
+  // --- STANDARDOWY WIDOK APLIKACJI (Home / Login / Splash / Maintenance) ---
   return (
     <div className="bg-[#2b2b2b] min-h-screen text-white relative flex flex-col">
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col relative">
         {!session ? (
-          <div className="flex-1 flex flex-col justify-center">
+          <div className="flex-1 flex flex-col justify-center relative">
+            {/* Ostrzeżenie na ekranie logowania, widoczne podczas przerwy technicznej */}
+            {maintenanceActive && (
+              <div className="absolute top-0 w-full bg-yellow-500 text-black text-center py-2 text-sm font-bold z-10 shadow-md">
+                🚧 System is currently under maintenance. Only administrators can log in.
+              </div>
+            )}
             <LoginView />
+          </div>
+        ) : isMaintenanceBlocked ? (
+          // --- EKRAN PRZERWY TECHNICZNEJ DLA ZALOGOWANYCH ---
+          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center animate-in fade-in zoom-in-95 duration-500">
+            <div className="bg-[#1c1c1e] p-10 rounded-3xl w-full max-w-md shadow-2xl border border-white/10 flex flex-col items-center">
+              <span className="text-6xl mb-6 drop-shadow-lg">🚧</span>
+              <h2 className="text-2xl font-bold mb-2">Under Maintenance</h2>
+              <p className="text-gray-400 mb-8 text-sm leading-relaxed">
+                We are currently updating SPlanner to bring you new features and improvements. Please check back later!
+              </p>
+              <button
+                onClick={() => supabase.auth.signOut()}
+                className="px-6 py-2.5 bg-white/5 border border-gray-700 hover:bg-white/10 text-white rounded-xl transition-colors font-medium text-sm w-full"
+              >
+                Sign Out
+              </button>
+            </div>
           </div>
         ) : (
           <DataProvider session={session}>
@@ -149,7 +204,8 @@ function App() {
         )}
       </div>
 
-      {showSplash && (
+      {/* Splash Screen - nie pokazujemy go, jeśli użytkownik dostał blokadę Maintenance */}
+      {showSplash && !isMaintenanceBlocked && (
         <div className="absolute inset-0 z-50">
           <SplashView onFinish={() => setShowSplash(false)} />
         </div>

@@ -11,6 +11,8 @@ import SubjectsView from './SubjectsView'
 import GradesView from './GradesView'
 import SubscriptionsView from './SubscriptionsView'
 import AchievementsView from './AchievementsView'
+import AdminPanelView from './AdminPanelView'
+import FeedbackView from './FeedbackView' // <-- IMPORT FEEDBACK VIEW
 
 // --- FUNKCJE POMOCNICZE DLA SUBSKRYPCJI ---
 const getNextBillingDate = (billingDateStr, cycle) => {
@@ -52,7 +54,9 @@ export default function HomeView() {
     isLoading, dailyTasks, topics, exams, globalStats,
     subjects, scheduleEntries, cancellations, customEvents, 
     eventLists, semesters, gradeModules, grades,
-    taskLists, subscriptions, settings
+    taskLists, subscriptions, settings,
+    isAdmin,
+    appConfig
   } = useData()
 
   const [todayProgress, setTodayProgress] = useState({ done: 0, total: 0 })
@@ -64,6 +68,8 @@ export default function HomeView() {
   const [gpa, setGpa] = useState(0.0)
 
   const [isStandalone, setIsStandalone] = useState(false);
+  const [isBannerDismissed, setIsBannerDismissed] = useState(false);
+  const [isToastDismissed, setIsToastDismissed] = useState(false);
   
   // --- STANY DLA POWIADOMIENIA WINDOWS ---
   const [showWindowsToast, setShowWindowsToast] = useState(false);
@@ -78,12 +84,16 @@ export default function HomeView() {
     setIsStandalone(!!isPWA);
   }, []);
 
-  // --- WYKRYWANIE WINDOWS & LOGIKA TOASTA ---
+// --- WYKRYWANIE WINDOWS & LOGIKA TOASTA ---
   useEffect(() => {
+    // Sprawdzamy, czy w ogóle mamy załadowany config i czy toast jest włączony
+    if (!appConfig || !appConfig.windows_support) return;
+
     const checkIsWindows = /Win/i.test(navigator.userAgent);
     setIsWindows(checkIsWindows);
 
-    if (checkIsWindows) {
+    // Pokazuj tylko jeśli użytkownik ma Windowsa I opcja w panelu admina jest włączona
+    if (checkIsWindows && appConfig.windows_support.show_toast) {
       const isHidden = localStorage.getItem('hideSPlannerWindowsToast');
       if (!isHidden) {
         const timer = setTimeout(() => {
@@ -91,8 +101,10 @@ export default function HomeView() {
         }, 3500);
         return () => clearTimeout(timer);
       }
+    } else {
+      setShowWindowsToast(false); // Wymusza ukrycie, jeśli wyłączyłeś to w locie jako admin
     }
-  }, []);
+  }, [appConfig?.windows_support?.show_toast]);
 
   const closeWindowsToast = () => {
     setShowWindowsToast(false);
@@ -858,14 +870,14 @@ export default function HomeView() {
       {/* PASEK BOCZNY Z MARGINESEM U GÓRY DLA NOTCHA */}
       <aside className="hidden md:flex flex-col w-72 bg-[#1c1c1e] border-r border-gray-800 px-6 pb-6 pt-[calc(env(safe-area-inset-top)+1.5rem)] overflow-y-auto">
         <div 
-          className="flex items-center gap-3 mb-10 cursor-pointer hover:opacity-80 transition-opacity"
+          className="flex items-center gap-3 mb-10 cursor-pointer hover:opacity-80 transition-opacity shrink-0"
           onClick={() => setActiveTab("Dashboard")}
         >
           <img src="/icon.png" alt="Splanner Logo" className="w-10 h-10 rounded-xl shadow-[0_2px_5px_rgba(0,0,0,0.5)]" />
           <h1 className="text-2xl font-bold tracking-tight">Splanner</h1>
         </div>
 
-        <div className="mb-10 flex flex-col gap-5">
+        <div className="mb-10 flex flex-col gap-5 shrink-0">
           <div className="flex flex-col gap-2">
             <div className="flex justify-between text-xs text-gray-400 font-semibold">
               <span>Today's progress:</span>
@@ -910,10 +922,44 @@ export default function HomeView() {
             </button>
           ))}
         </nav>
+        
+        {/* PRZYCISK FEEDBACKU W BOCZNYM MENU NA PC */}
+        <div className="mt-6 pt-6 border-t border-gray-800 shrink-0">
+          <button 
+            onClick={() => setActiveTab("Feedback")}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-gray-400 border border-dashed border-gray-700 hover:text-white hover:bg-white/5 hover:border-gray-500 transition-all"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
+            Give Feedback
+          </button>
+        </div>
       </aside>
 
       {/* GŁÓWNA ZAWARTOŚĆ */}
       <div className="flex-1 flex flex-col relative">
+
+        {/* GLOBALNY BANER OGŁOSZEŃ */}
+        {appConfig?.global_message?.active && appConfig.global_message.text && !isBannerDismissed && (
+          <div className={`w-full px-4 py-2.5 flex items-center justify-between text-sm shadow-md z-40 shrink-0 ${
+            appConfig.global_message.type === 'error' ? 'bg-red-500 text-white' :
+            appConfig.global_message.type === 'warning' ? 'bg-yellow-500 text-black' :
+            appConfig.global_message.type === 'success' ? 'bg-green-500 text-white' :
+            'bg-[#3498db] text-white'
+          }`}>
+            <div className="flex-1 flex justify-center font-bold">
+              <span>{appConfig.global_message.text}</span>
+            </div>
+            <button 
+              onClick={() => setIsBannerDismissed(true)}
+              className="p-1 hover:bg-black/20 rounded-lg transition-colors shrink-0 ml-4"
+              title="Zamknij (pojawi się ponownie przy odświeżeniu)"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M6 18L18 6M6 6l12 12"></path>
+              </svg>
+            </button>
+          </div>
+        )}
         
         {activeTab === "Settings" ? (
           <SettingsView onBack={() => setActiveTab("Dashboard")} />
@@ -942,6 +988,10 @@ export default function HomeView() {
           <SubscriptionsView onBack={() => setActiveTab("More")} />
         ) : activeTab === "Achievements" ? (
           <AchievementsView onBack={() => setActiveTab("More")} />
+        ) : activeTab === "Admin" ? (                                     
+          <AdminPanelView onBack={() => setActiveTab("Dashboard")} />     
+        ) : activeTab === "Feedback" ? (                                     
+          <FeedbackView onBack={() => setActiveTab("Dashboard")} />     
         ) : (
           <main className="flex-1 overflow-y-auto px-6 pb-24 md:p-10 pt-[calc(env(safe-area-inset-top)+1.5rem)]">
             
@@ -952,6 +1002,17 @@ export default function HomeView() {
               </div>
 
               <div className="flex items-center gap-3">
+                {/* PRZYCISK ADMIN PANELU (Tylko dla administratorów) */}
+                {isAdmin && (
+                  <button 
+                    onClick={() => setActiveTab("Admin")} 
+                    className="p-2.5 text-[#e74c3c] hover:text-white bg-[#1c1c1e] hover:bg-[#e74c3c]/30 rounded-full transition-colors border border-gray-800"
+                    title="Admin Panel"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                  </button>
+                )}
+
                 <button onClick={() => setActiveTab("Settings")} className="p-2.5 text-gray-400 hover:text-white bg-[#1c1c1e] hover:bg-gray-800 rounded-full transition-colors border border-gray-800">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                 </button>
@@ -968,24 +1029,37 @@ export default function HomeView() {
             {activeTab === "Dashboard" && renderDashboardWidgets()}
             
             {activeTab === "More" && (
-              <div className="flex flex-col gap-3">
-                {moreTabs.map(item => (
+              <div className="flex flex-col h-full gap-4">
+                <div className="flex flex-col gap-3">
+                  {moreTabs.map(item => (
+                    <button 
+                      key={item}
+                      onClick={() => {
+                        if (item === "Task History") setHistoryReturnTab("More"); 
+                        setActiveTab(item);
+                      }}
+                      className="bg-[#1c1c1e] p-4 rounded-2xl flex justify-between items-center active:scale-95 transition-transform"
+                    >
+                      <span className="font-medium text-gray-200">{item}</span>
+                      <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
+                    </button>
+                  ))}
+                </div>
+                
+                {/* PRZYCISK FEEDBACKU W MENU "MORE" NA MOBILE */}
+                <div className="mt-auto md:hidden pt-4 border-t border-gray-800 pb-8">
                   <button 
-                    key={item}
-                    onClick={() => {
-                      if (item === "Task History") setHistoryReturnTab("More"); 
-                      setActiveTab(item);
-                    }}
-                    className="bg-[#1c1c1e] p-4 rounded-2xl flex justify-between items-center active:scale-95 transition-transform"
+                    onClick={() => setActiveTab("Feedback")}
+                    className="w-full flex justify-center items-center gap-2 p-4 rounded-2xl bg-[#1c1c1e]/50 text-gray-400 border border-dashed border-gray-700 active:scale-95 transition-transform"
                   >
-                    <span className="font-medium text-gray-200">{item}</span>
-                    <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
+                    <span className="font-bold">Give Feedback</span>
                   </button>
-                ))}
+                </div>
               </div>
             )}
 
-            {activeTab !== "Dashboard" && activeTab !== "More" && activeTab !== "Settings" && activeTab !== "Schedule" && activeTab !== "Exam Database & Archive" && activeTab !== "Plan" && activeTab !== "Todo" && activeTab !== "Task History" && activeTab !== "Subjects & Semesters" && activeTab !== "Grades" && activeTab !== "Subscriptions" && activeTab !== "Achievements" &&(
+            {activeTab !== "Dashboard" && activeTab !== "More" && activeTab !== "Settings" && activeTab !== "Schedule" && activeTab !== "Exam Database & Archive" && activeTab !== "Plan" && activeTab !== "Todo" && activeTab !== "Task History" && activeTab !== "Subjects & Semesters" && activeTab !== "Grades" && activeTab !== "Subscriptions" && activeTab !== "Achievements" && activeTab !== "Admin" && activeTab !== "Feedback" && (
               <div className="bg-[#1c1c1e] p-10 rounded-3xl border border-white/5 flex flex-col items-center justify-center text-gray-500 min-h-[300px]">
                 <span className="text-4xl mb-4">🚧</span>
                 <p>Widok <strong>{activeTab}</strong> jest w budowie...</p>
@@ -996,33 +1070,60 @@ export default function HomeView() {
         )}
 
         {/* TOAST DLA WINDOWS */}
-        <div 
-          className={`fixed bottom-24 md:bottom-10 right-6 z-50 bg-[#1c1c1e] border border-gray-700 rounded-2xl shadow-2xl p-5 w-72 md:w-80 transform transition-all duration-500 ease-in-out ${showWindowsToast ? 'translate-x-0 opacity-100' : 'translate-x-[150%] opacity-0'}`}
-        >
-          <button 
-            onClick={closeWindowsToast}
-            className="absolute top-3 right-3 text-gray-500 hover:text-white transition-colors p-1"
+        {appConfig?.windows_support?.show_toast && (
+          <div 
+            className={`fixed bottom-24 md:bottom-10 right-6 z-50 bg-[#1c1c1e] border border-gray-700 rounded-2xl shadow-2xl p-5 w-72 md:w-80 transform transition-all duration-500 ease-in-out ${showWindowsToast ? 'translate-x-0 opacity-100' : 'translate-x-[150%] opacity-0'}`}
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-          </button>
-          <div className="flex items-start gap-4">
-            <div className="bg-[#3498db]/20 p-2.5 rounded-xl text-[#3498db] shrink-0 mt-0.5">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
-            </div>
-            <div>
-              <h4 className="text-white font-bold text-sm mb-1">Splanner for Windows</h4>
-              <p className="text-gray-400 text-[11px] leading-relaxed mb-3 pr-2">Install the dedicated desktop app for better performance and more features.</p>
-              <a 
-                href="https://github.com/oskarkonitz/SPlanner/releases/latest/download/SPlanner_Installer.exe"
-                onClick={closeWindowsToast}
-                className="inline-flex items-center gap-2 bg-[#3498db] hover:bg-[#2980b9] text-white text-xs font-bold py-2 px-4 rounded-lg transition-colors"
-              >
-                <span>Download now</span>
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-              </a>
+            <button 
+              onClick={closeWindowsToast}
+              className="absolute top-3 right-3 text-gray-500 hover:text-white transition-colors p-1"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+            <div className="flex items-start gap-4">
+              <div className="bg-[#3498db]/20 p-2.5 rounded-xl text-[#3498db] shrink-0 mt-0.5">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+              </div>
+              <div>
+                <h4 className="text-white font-bold text-sm mb-1">Splanner for Windows</h4>
+                <p className="text-gray-400 text-[11px] leading-relaxed mb-3 pr-2">Install the dedicated desktop app for better performance and more features.</p>
+                <a 
+                  href={appConfig.windows_support.installer_url || "https://github.com/oskarkonitz/SPlanner/releases/latest/download/SPlanner_Installer.exe"}
+                  onClick={closeWindowsToast}
+                  className="inline-flex items-center gap-2 bg-[#3498db] hover:bg-[#2980b9] text-white text-xs font-bold py-2 px-4 rounded-lg transition-colors"
+                >
+                  <span>Download now</span>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                </a>
+              </div>
             </div>
           </div>
-        </div>
+        )}
+
+        {/* NOWY POPUP ADMINA (Toast Message) */}
+        {appConfig?.toast_message?.active && !isToastDismissed && (
+          <div 
+            className="fixed bottom-[140px] md:bottom-36 right-6 z-50 bg-[#1c1c1e] border border-gray-700 rounded-2xl shadow-2xl p-5 w-72 md:w-80 animate-in slide-in-from-right-8 duration-500"
+          >
+            <button 
+              onClick={() => setIsToastDismissed(true)}
+              className="absolute top-3 right-3 text-gray-500 hover:text-white transition-colors p-1"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+            <div className="flex items-start gap-4">
+              <div className="bg-purple-500/20 p-2.5 rounded-xl text-purple-400 shrink-0 mt-0.5">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+              </div>
+              <div>
+                <h4 className="text-white font-bold text-sm mb-1">{appConfig.toast_message.title}</h4>
+                <p className="text-gray-400 text-xs leading-relaxed pr-2 whitespace-pre-wrap">
+                  {appConfig.toast_message.text}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* DOLNY PASEK NAWIGACJI */}
         <nav className="md:hidden absolute bottom-0 w-full bg-[#1c1c1e]/90 backdrop-blur-md border-t border-gray-800">

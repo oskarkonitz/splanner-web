@@ -34,6 +34,12 @@ export function DataProvider({ children, session }) {
   const [achievements, setAchievements] = useState([]); 
   const [popupQueue, setPopupQueue] = useState([]); 
 
+  const [appConfig, setAppConfig] = useState({});
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // --- NOWY STAN DLA ZGŁOSZEŃ ---
+  const [feedback, setFeedback] = useState([]);
+
   useEffect(() => {
     if (session) {
       fetchDashboardData();
@@ -50,7 +56,9 @@ export function DataProvider({ children, session }) {
         notesRes,
         customEventsRes, eventListsRes, semestersRes,
         gradeModulesRes, gradesRes, blockedRes, subscriptionsRes,
-        achievementsRes 
+        achievementsRes,
+        appConfigRes, adminsRes,
+        feedbackRes // <-- POBRANIE ZGŁOSZEŃ
       ] = await Promise.all([
         supabase.from('daily_tasks').select('*'),
         supabase.from('task_lists').select('*'),
@@ -69,7 +77,10 @@ export function DataProvider({ children, session }) {
         supabase.from('grades').select('*'),
         supabase.from('blocked_dates').select('*'), 
         supabase.from('subscriptions').select('*'),
-        supabase.from('achievements').select('*') 
+        supabase.from('achievements').select('*'),
+        supabase.from('app_config').select('*'), 
+        supabase.from('admins').select('user_id'),
+        supabase.from('feedback').select('*').order('created_at', { ascending: false }) // Najnowsze na górze
       ]);
 
       if (tasksRes.data) setDailyTasks(tasksRes.data);
@@ -113,10 +124,62 @@ export function DataProvider({ children, session }) {
       
       if (blockedRes.data) setBlockedDates(blockedRes.data);
 
+      if (appConfigRes?.data) {
+        const configObj = {};
+        appConfigRes.data.forEach(item => { configObj[item.key] = item.value; });
+        setAppConfig(configObj);
+      }
+      
+      if (adminsRes?.data) {
+        setIsAdmin(adminsRes.data.length > 0);
+      }
+
+      // --- ZAPISANIE ZGŁOSZEŃ DO STANU ---
+      if (feedbackRes?.data) {
+        setFeedback(feedbackRes.data);
+      }
+
     } catch (error) {
       console.error("Błąd pobierania Dashboardu:", error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const updateAppConfig = async (key, value) => {
+    try {
+      await supabase.from('app_config').update({ value }).eq('key', key);
+      setAppConfig(prev => ({ ...prev, [key]: value }));
+    } catch (error) {
+      console.error("Błąd aktualizacji configu aplikacji:", error);
+    }
+  };
+
+  // --- FUNKCJE DLA SYSTEMU ZGŁOSZEŃ ---
+  const saveFeedback = async (title, description) => {
+    try {
+      const payload = {
+        user_id: session?.user?.id,
+        title: title,
+        description: description,
+        status: 'open'
+      };
+      await supabase.from('feedback').insert([payload]);
+      await fetchDashboardData(); // Odświeżamy, żeby nowe zgłoszenie od razu pojawiło się w panelu
+    } catch (error) {
+      console.error("Błąd wysyłania zgłoszenia:", error);
+    }
+  };
+
+  const replyToFeedback = async (id, replyText, status = 'resolved') => {
+    try {
+      await supabase.from('feedback').update({
+        admin_reply: replyText,
+        status: status
+      }).eq('id', id);
+      await fetchDashboardData();
+    } catch (error) {
+      console.error("Błąd zapisywania odpowiedzi:", error);
     }
   };
 
@@ -243,11 +306,9 @@ export function DataProvider({ children, session }) {
     } catch (error) { console.error("Błąd:", error); }
   };
 
-  // --- ZMIENIONO LOGIKĘ ZAPISU STATUSU ---
   const toggleTaskStatus = async (task) => {
     try {
       const newStatus = task.status === 'done' ? 'todo' : 'done';
-      // NOWE: ustawiamy timestamp jeśli wykonane, lub czyścimy jeśli cofnięte do todo
       const completedAt = newStatus === 'done' ? new Date().toISOString() : null;
       
       await supabase.from('daily_tasks').update({ 
@@ -557,13 +618,11 @@ export function DataProvider({ children, session }) {
       const isCounter = gradeData.is_counter || false;
       const pts = parseFloat(gradeData.points) || 0;
       
-      // NAPRAWA ZEROWEGO MNOŻNIKA
       const parsedMultiplier = parseFloat(gradeData.points_multiplier);
       const multiplier = isNaN(parsedMultiplier) ? 1.0 : parsedMultiplier;
       
       const finalValue = isCounter ? (pts * multiplier) : (parseFloat(gradeData.value) || 0);
 
-      // NAPRAWA ZEROWEJ WAGI
       const parsedWeight = parseFloat(gradeData.weight);
       const finalWeight = isNaN(parsedWeight) ? 1 : parsedWeight;
 
@@ -604,7 +663,6 @@ export function DataProvider({ children, session }) {
       
       const newPoints = (parseFloat(grade.points) || 0) + delta;
       
-      // NAPRAWA ZEROWEGO MNOŻNIKA
       const parsedMultiplier = parseFloat(grade.points_multiplier);
       const multiplier = isNaN(parsedMultiplier) ? 1.0 : parsedMultiplier;
       
@@ -777,6 +835,8 @@ export function DataProvider({ children, session }) {
       blockedDates,
       subscriptions, achievements, 
       settings,
+      appConfig, isAdmin, updateAppConfig, 
+      feedback, saveFeedback, replyToFeedback, // <-- UDOSTĘPNIONE DO KOMPONENTÓW
       updateSetting,
       fetchDashboardData, saveExam, deleteExam, saveCustomEvent, deleteCustomEvent, saveSubject,
       toggleTopicStatus, saveExamNote, saveTopic, deleteTopic, runPlanner,

@@ -3,7 +3,7 @@ import { supabase } from '../api/supabase'
 import { useData } from '../context/DataContext'
 
 export default function SettingsView({ onBack }) {
-  const { session, taskLists, settings, updateSetting } = useData()
+  const { session, taskLists, settings, updateSetting, appConfig } = useData()
   
   const [activeModal, setActiveModal] = useState(null)
   
@@ -148,14 +148,14 @@ export default function SettingsView({ onBack }) {
           />
         </Section>
 
-        {isWindows && (
+        {isWindows && appConfig?.windows_support?.enabled && (
           <Section title="App & Integration">
             <Row 
               title="Download for Windows" 
               icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>}
               hasArrow 
               asLink
-              href="https://github.com/oskarkonitz/SPlanner/releases/latest/download/SPlanner_Installer.exe"
+              href={appConfig.windows_support.installer_url || "https://github.com/oskarkonitz/SPlanner/releases/latest/download/SPlanner_Installer.exe"}
             />
           </Section>
         )}
