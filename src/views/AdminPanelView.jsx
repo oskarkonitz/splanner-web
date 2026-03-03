@@ -3,10 +3,9 @@ import { supabase } from '../api/supabase';
 import { useData } from '../context/DataContext';
 
 export default function AdminPanelView({ onBack }) {
-  // POBIERAMY NOWE FUNKCJE I STAN Z DATA CONTEXT
   const { isAdmin, appConfig, updateAppConfig, dailyTasks, exams, subjects, feedback, replyToFeedback } = useData();
 
-  const [activeTab, setActiveTab] = useState('Distribution'); 
+  const [activeTab, setActiveTab] = useState('Feedback'); 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Stany configu
@@ -20,49 +19,34 @@ export default function AdminPanelView({ onBack }) {
   const [globalDataStats, setGlobalDataStats] = useState(null);
   const [isLoadingStats, setIsLoadingStats] = useState(false);
 
-  // --- STANY DLA SYSTEMU ZGŁOSZEŃ ---
+  // Stany dla Systemu Zgłoszeń
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [replyText, setReplyText] = useState('');
   const [ticketStatus, setTicketStatus] = useState('open');
   const [isReplying, setIsReplying] = useState(false);
 
-  // Filtrowanie i sortowanie zgłoszeń
+  // Filtrowanie i sortowanie zgłoszeń (zabezpieczone przed undefined)
   const sortedFeedback = useMemo(() => {
-    if (!feedback) return [];
-    return [...feedback].sort((a, b) => {
-      // Najpierw otwarte, potem zamknięte
+    const safeFeedback = feedback || [];
+    return [...safeFeedback].sort((a, b) => {
       if (a.status === 'open' && b.status !== 'open') return -1;
       if (a.status !== 'open' && b.status === 'open') return 1;
-      // Potem po dacie
       return new Date(b.created_at) - new Date(a.created_at);
     });
   }, [feedback]);
 
   // Synchronizacja lokalnych stanów configu
   useEffect(() => {
-    if (appConfig.windows_support?.installer_url) setInstallerUrl(appConfig.windows_support.installer_url);
-    if (appConfig.global_message) {
+    if (appConfig?.windows_support?.installer_url) setInstallerUrl(appConfig.windows_support.installer_url);
+    if (appConfig?.global_message) {
       setMessageText(appConfig.global_message.text || '');
       setMessageType(appConfig.global_message.type || 'info');
     }
-    if (appConfig.toast_message) {
+    if (appConfig?.toast_message) {
       setToastTitle(appConfig.toast_message.title || '');
       setToastText(appConfig.toast_message.text || '');
     }
   }, [appConfig]);
-
-  // Pobieranie statystyk
-  useEffect(() => {
-    if (activeTab === 'Analytics' && !globalDataStats) {
-      const fetchGlobalStats = async () => {
-        setIsLoadingStats(true);
-        const { data, error } = await supabase.rpc('get_global_stats');
-        if (!error && data) setGlobalDataStats(data);
-        setIsLoadingStats(false);
-      };
-      fetchGlobalStats();
-    }
-  }, [activeTab, globalDataStats]);
 
   if (!isAdmin) {
     return (
@@ -75,36 +59,51 @@ export default function AdminPanelView({ onBack }) {
     );
   }
 
+  // --- MANUALNE POBIERANIE STATYSTYK ---
+  const fetchGlobalStats = async () => {
+    setIsLoadingStats(true);
+    try {
+      const { data, error } = await supabase.rpc('get_global_stats');
+      if (error) throw error;
+      setGlobalDataStats(data);
+    } catch (err) {
+      console.error("Błąd pobierania statystyk:", err);
+      alert("Nie udało się pobrać statystyk. Upewnij się, że dodałeś funkcję get_global_stats w SQL.");
+    } finally {
+      setIsLoadingStats(false);
+    }
+  };
+
   // --- HANDLERY KONFIGURACJI ---
   const handleWindowsToggle = (key) => {
-    const current = appConfig.windows_support || {};
+    const current = appConfig?.windows_support || {};
     updateAppConfig('windows_support', { ...current, [key]: !current[key] });
   };
   const handleSaveWindowsUrl = () => {
-    const current = appConfig.windows_support || {};
+    const current = appConfig?.windows_support || {};
     updateAppConfig('windows_support', { ...current, installer_url: installerUrl });
     alert('Installer URL saved successfully!');
   };
   const handleMessageToggle = () => {
-    const current = appConfig.global_message || {};
+    const current = appConfig?.global_message || {};
     updateAppConfig('global_message', { ...current, active: !current.active });
   };
   const handleSaveMessage = () => {
-    const current = appConfig.global_message || {};
+    const current = appConfig?.global_message || {};
     updateAppConfig('global_message', { ...current, text: messageText, type: messageType });
     alert('Global message saved successfully!');
   };
   const handleToastToggle = () => {
-    const current = appConfig.toast_message || {};
+    const current = appConfig?.toast_message || {};
     updateAppConfig('toast_message', { ...current, active: !current.active });
   };
   const handleSaveToast = () => {
-    const current = appConfig.toast_message || {};
+    const current = appConfig?.toast_message || {};
     updateAppConfig('toast_message', { ...current, title: toastTitle, text: toastText });
     alert('Toast popup saved successfully!');
   };
   const handleMaintenanceToggle = () => {
-    const current = appConfig.maintenance || {};
+    const current = appConfig?.maintenance || {};
     updateAppConfig('maintenance', { active: !current.active });
   };
   const handleTabClick = (tab) => {
@@ -124,10 +123,9 @@ export default function AdminPanelView({ onBack }) {
     setIsReplying(true);
     await replyToFeedback(selectedTicket.id, replyText, ticketStatus);
     setIsReplying(false);
-    setSelectedTicket(null); // Zamknij modal powrotny
+    setSelectedTicket(null);
   };
 
-  // Komponent pomocniczy
   const ToggleSwitch = ({ label, description, checked, onChange }) => (
     <div className="flex items-center justify-between p-4 bg-[#1c1c1e] rounded-2xl border border-white/5">
       <div>
@@ -172,7 +170,6 @@ export default function AdminPanelView({ onBack }) {
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
           </div>
-          {/* NOWA ZAKŁADKA FEEDBACK */}
           {['General', 'Distribution', 'Announcements', 'System', 'Analytics', 'Feedback'].map(tab => (
             <button
               key={tab}
@@ -180,10 +177,9 @@ export default function AdminPanelView({ onBack }) {
               className={`text-left px-4 py-3 rounded-xl font-medium transition-all flex justify-between items-center ${activeTab === tab ? 'bg-[#3498db] text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
             >
               <span>{tab}</span>
-              {/* Odznaka z ilością otwartych ticketów */}
-              {tab === 'Feedback' && feedback.filter(f => f.status === 'open').length > 0 && (
+              {tab === 'Feedback' && (feedback || []).filter(f => f.status === 'open').length > 0 && (
                 <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
-                  {feedback.filter(f => f.status === 'open').length}
+                  {(feedback || []).filter(f => f.status === 'open').length}
                 </span>
               )}
             </button>
@@ -205,8 +201,8 @@ export default function AdminPanelView({ onBack }) {
             {activeTab === 'Distribution' && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
                 <h3 className="text-xl font-bold text-white border-b border-gray-800 pb-2">Windows App Distribution</h3>
-                <ToggleSwitch label="Enable Windows Download" description="Shows the download option in the Settings view." checked={appConfig.windows_support?.enabled || false} onChange={() => handleWindowsToggle('enabled')} />
-                <ToggleSwitch label="Show Windows Promo Toast" description="Displays a pop-up toast suggesting the app to Windows users." checked={appConfig.windows_support?.show_toast || false} onChange={() => handleWindowsToggle('show_toast')} />
+                <ToggleSwitch label="Enable Windows Download" description="Shows the download option in the Settings view." checked={appConfig?.windows_support?.enabled || false} onChange={() => handleWindowsToggle('enabled')} />
+                <ToggleSwitch label="Show Windows Promo Toast" description="Displays a pop-up toast suggesting the app to Windows users." checked={appConfig?.windows_support?.show_toast || false} onChange={() => handleWindowsToggle('show_toast')} />
                 <div className="bg-[#1c1c1e] p-5 rounded-2xl border border-white/5 space-y-3">
                   <label className="block text-sm font-medium text-gray-400">Installer Direct URL</label>
                   <input type="text" value={installerUrl} onChange={(e) => setInstallerUrl(e.target.value)} className="w-full bg-[#2b2b2b] text-white px-4 py-3 rounded-xl border border-gray-700 focus:border-[#3498db] focus:outline-none" placeholder="https://github.com/..." />
@@ -219,7 +215,7 @@ export default function AdminPanelView({ onBack }) {
               <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
                 <div className="space-y-4">
                   <h3 className="text-xl font-bold text-white border-b border-gray-800 pb-2">Top Banner Message</h3>
-                  <ToggleSwitch label="Activate Top Banner" description="Displays a banner at the very top of the app." checked={appConfig.global_message?.active || false} onChange={handleMessageToggle} />
+                  <ToggleSwitch label="Activate Top Banner" description="Displays a banner at the very top of the app." checked={appConfig?.global_message?.active || false} onChange={handleMessageToggle} />
                   <div className="bg-[#1c1c1e] p-5 rounded-2xl border border-white/5 space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-400 mb-2">Message Type (Color)</label>
@@ -240,7 +236,7 @@ export default function AdminPanelView({ onBack }) {
 
                 <div className="space-y-4 pt-4">
                   <h3 className="text-xl font-bold text-white border-b border-gray-800 pb-2">Popup Toast (Bottom Right)</h3>
-                  <ToggleSwitch label="Activate Popup Toast" description="Displays a floating notification in the bottom right corner." checked={appConfig.toast_message?.active || false} onChange={handleToastToggle} />
+                  <ToggleSwitch label="Activate Popup Toast" description="Displays a floating notification in the bottom right corner." checked={appConfig?.toast_message?.active || false} onChange={handleToastToggle} />
                   <div className="bg-[#1c1c1e] p-5 rounded-2xl border border-white/5 space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-400 mb-2">Popup Title</label>
@@ -259,7 +255,7 @@ export default function AdminPanelView({ onBack }) {
             {activeTab === 'System' && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
                 <h3 className="text-xl font-bold text-white border-b border-gray-800 pb-2">Maintenance & Danger Zone</h3>
-                <ToggleSwitch label="Maintenance Mode" description="Locks down the app for non-admins." checked={appConfig.maintenance?.active || false} onChange={handleMaintenanceToggle} />
+                <ToggleSwitch label="Maintenance Mode" description="Locks down the app for non-admins." checked={appConfig?.maintenance?.active || false} onChange={handleMaintenanceToggle} />
               </div>
             )}
 
@@ -271,31 +267,62 @@ export default function AdminPanelView({ onBack }) {
                       <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                       Global Platform Stats
                     </h3>
-                    {isLoadingStats && <span className="text-xs font-bold text-[#3498db] animate-pulse">Loading...</span>}
+                    <button 
+                      onClick={fetchGlobalStats}
+                      disabled={isLoadingStats}
+                      className="bg-[#3498db] hover:bg-[#2980b9] text-white px-4 py-1.5 rounded-lg text-sm font-bold transition-colors disabled:opacity-50"
+                    >
+                      {isLoadingStats ? 'Loading...' : (globalDataStats ? 'Refresh Stats' : 'Load Stats')}
+                    </button>
                   </div>
+                  
+                  {!globalDataStats ? (
+                    <div className="bg-[#1c1c1e] p-8 rounded-2xl border border-white/5 text-center text-gray-500 text-sm">
+                      Click the button above to manually fetch global database metrics.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-[#1c1c1e] p-5 rounded-2xl border border-[#3498db]/30 shadow-[0_0_15px_rgba(52,152,219,0.1)]">
+                        <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Registered Users</span>
+                        <div className="text-3xl font-black text-[#3498db] mt-1">{globalDataStats.users}</div>
+                      </div>
+                      <div className="bg-[#1c1c1e] p-5 rounded-2xl border border-white/5">
+                        <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Total Tasks</span>
+                        <div className="text-3xl font-black text-white mt-1">{globalDataStats.tasks}</div>
+                      </div>
+                      <div className="bg-[#1c1c1e] p-5 rounded-2xl border border-white/5">
+                        <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Total Exams</span>
+                        <div className="text-3xl font-black text-white mt-1">{globalDataStats.exams}</div>
+                      </div>
+                      <div className="bg-[#1c1c1e] p-5 rounded-2xl border border-white/5">
+                        <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Total Subjects</span>
+                        <div className="text-3xl font-black text-white mt-1">{globalDataStats.subjects}</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* PRYWATNE STATYSTYKI ADMINA */}
+                <div>
+                  <h3 className="text-xl font-bold text-white border-b border-gray-800 pb-2 mb-4 flex items-center gap-2">
+                    <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                    Your Personal Stats
+                  </h3>
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-[#1c1c1e] p-5 rounded-2xl border border-[#3498db]/30 shadow-[0_0_15px_rgba(52,152,219,0.1)]">
-                      <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Registered Users</span>
-                      <div className="text-3xl font-black text-[#3498db] mt-1">{globalDataStats ? globalDataStats.users : '-'}</div>
+                    <div className="bg-[#1c1c1e] p-5 rounded-2xl border border-white/5 opacity-80">
+                      <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Your Tasks</span>
+                      <div className="text-2xl font-black text-white mt-1">{dailyTasks?.length || 0}</div>
                     </div>
-                    <div className="bg-[#1c1c1e] p-5 rounded-2xl border border-white/5">
-                      <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Total Tasks</span>
-                      <div className="text-3xl font-black text-white mt-1">{globalDataStats ? globalDataStats.tasks : '-'}</div>
-                    </div>
-                    <div className="bg-[#1c1c1e] p-5 rounded-2xl border border-white/5">
-                      <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Total Exams</span>
-                      <div className="text-3xl font-black text-white mt-1">{globalDataStats ? globalDataStats.exams : '-'}</div>
-                    </div>
-                    <div className="bg-[#1c1c1e] p-5 rounded-2xl border border-white/5">
-                      <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Total Subjects</span>
-                      <div className="text-3xl font-black text-white mt-1">{globalDataStats ? globalDataStats.subjects : '-'}</div>
+                    <div className="bg-[#1c1c1e] p-5 rounded-2xl border border-white/5 opacity-80">
+                      <span className="text-gray-400 text-xs font-bold uppercase tracking-wider">Your Exams</span>
+                      <div className="text-2xl font-black text-white mt-1">{exams?.length || 0}</div>
                     </div>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* NOWA ZAKŁADKA FEEDBACK */}
+            {/* ZAKŁADKA FEEDBACK */}
             {activeTab === 'Feedback' && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
                 <h3 className="text-xl font-bold text-white border-b border-gray-800 pb-2">User Feedback & Reports</h3>
@@ -333,7 +360,7 @@ export default function AdminPanelView({ onBack }) {
         </div>
       </div>
 
-      {/* MODAL DO OBSŁUGI ZGŁOSZENIA (Zamiast na nowej podstronie, jest jako nakładka) */}
+      {/* MODAL DO OBSŁUGI ZGŁOSZENIA */}
       {selectedTicket && (
         <div className="fixed inset-0 bg-black/80 z-[60] flex justify-center items-center p-4">
           <div className="bg-[#1c1c1e] rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-gray-700 shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
@@ -392,12 +419,10 @@ export default function AdminPanelView({ onBack }) {
                   </div>
                 </div>
               </div>
-
             </div>
           </div>
         </div>
       )}
-
     </div>
   );
 }

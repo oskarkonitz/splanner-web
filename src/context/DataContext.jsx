@@ -9,7 +9,7 @@ const generateId = (prefix) => {
   return `${prefix}_${Math.random().toString(36).substring(2, 10)}`;
 };
 
-export function DataProvider({ children, session }) {
+export function DataProvider({ children }) {
   const [isLoading, setIsLoading] = useState(true);
   
   const [dailyTasks, setDailyTasks] = useState([]);
@@ -36,15 +36,13 @@ export function DataProvider({ children, session }) {
 
   const [appConfig, setAppConfig] = useState({});
   const [isAdmin, setIsAdmin] = useState(false);
-
-  // --- NOWY STAN DLA ZGŁOSZEŃ ---
   const [feedback, setFeedback] = useState([]);
 
+  // Pobieramy dane TYLKO RAZ po zamontowaniu DataProvidera. 
+  // Supabase automatycznie dba o tokeny pod spodem przy wywołaniach funkcji zapisujących.
   useEffect(() => {
-    if (session) {
-      fetchDashboardData();
-    }
-  }, [session]);
+    fetchDashboardData();
+  }, []);
 
   const fetchDashboardData = async () => {
     setIsLoading(true);
@@ -58,7 +56,7 @@ export function DataProvider({ children, session }) {
         gradeModulesRes, gradesRes, blockedRes, subscriptionsRes,
         achievementsRes,
         appConfigRes, adminsRes,
-        feedbackRes // <-- POBRANIE ZGŁOSZEŃ
+        feedbackRes
       ] = await Promise.all([
         supabase.from('daily_tasks').select('*'),
         supabase.from('task_lists').select('*'),
@@ -80,7 +78,7 @@ export function DataProvider({ children, session }) {
         supabase.from('achievements').select('*'),
         supabase.from('app_config').select('*'), 
         supabase.from('admins').select('user_id'),
-        supabase.from('feedback').select('*').order('created_at', { ascending: false }) // Najnowsze na górze
+        supabase.from('feedback').select('*').order('created_at', { ascending: false })
       ]);
 
       if (tasksRes.data) setDailyTasks(tasksRes.data);
@@ -134,7 +132,6 @@ export function DataProvider({ children, session }) {
         setIsAdmin(adminsRes.data.length > 0);
       }
 
-      // --- ZAPISANIE ZGŁOSZEŃ DO STANU ---
       if (feedbackRes?.data) {
         setFeedback(feedbackRes.data);
       }
@@ -155,17 +152,17 @@ export function DataProvider({ children, session }) {
     }
   };
 
-  // --- FUNKCJE DLA SYSTEMU ZGŁOSZEŃ ---
   const saveFeedback = async (title, description) => {
     try {
+      const { data: { user } } = await supabase.auth.getUser(); // Pobieramy bezpiecznie z SDK
       const payload = {
-        user_id: session?.user?.id,
+        user_id: user?.id,
         title: title,
         description: description,
         status: 'open'
       };
       await supabase.from('feedback').insert([payload]);
-      await fetchDashboardData(); // Odświeżamy, żeby nowe zgłoszenie od razu pojawiło się w panelu
+      await fetchDashboardData();
     } catch (error) {
       console.error("Błąd wysyłania zgłoszenia:", error);
     }
@@ -185,12 +182,13 @@ export function DataProvider({ children, session }) {
 
   const saveBlockedDates = async (dateStringsArray) => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
       await supabase.from('blocked_dates').delete().neq('date', '1970-01-01');
 
       if (dateStringsArray && dateStringsArray.length > 0) {
         const payload = dateStringsArray.map(dStr => ({
           date: dStr,
-          user_id: session?.user?.id
+          user_id: user?.id
         }));
         await supabase.from('blocked_dates').insert(payload);
       }
@@ -213,6 +211,7 @@ export function DataProvider({ children, session }) {
 
   const saveScheduleNote = async (entryId, date, content) => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
       const existingNote = scheduleNotes.find(n => n.entry_id === entryId && n.date === date);
       
       if (!content.trim()) {
@@ -225,7 +224,7 @@ export function DataProvider({ children, session }) {
           entry_id: entryId,
           date: date,
           content: content,
-          user_id: session?.user?.id
+          user_id: user?.id
         };
         await supabase.from('schedule_notes').upsert(payload);
       }
@@ -836,7 +835,7 @@ export function DataProvider({ children, session }) {
       subscriptions, achievements, 
       settings,
       appConfig, isAdmin, updateAppConfig, 
-      feedback, saveFeedback, replyToFeedback, // <-- UDOSTĘPNIONE DO KOMPONENTÓW
+      feedback, saveFeedback, replyToFeedback,
       updateSetting,
       fetchDashboardData, saveExam, deleteExam, saveCustomEvent, deleteCustomEvent, saveSubject,
       toggleTopicStatus, saveExamNote, saveTopic, deleteTopic, runPlanner,
