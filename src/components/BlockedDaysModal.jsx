@@ -187,7 +187,8 @@ export default function BlockedDaysModal({ isOpen, onClose }) {
           </button>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-4 pb-20 touch-none">
+        {/* TUTAJ BYŁA POPRAWKA: Usunięto 'touch-none' z klas */}
+        <div className="flex-1 overflow-y-auto p-4 pb-20">
             
             <FormSection title="Overview">
                 <FormRow label="Total Selected Days" border={false}>

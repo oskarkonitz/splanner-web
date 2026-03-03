@@ -243,10 +243,18 @@ export function DataProvider({ children, session }) {
     } catch (error) { console.error("Błąd:", error); }
   };
 
+  // --- ZMIENIONO LOGIKĘ ZAPISU STATUSU ---
   const toggleTaskStatus = async (task) => {
     try {
       const newStatus = task.status === 'done' ? 'todo' : 'done';
-      await supabase.from('daily_tasks').update({ status: newStatus }).eq('id', task.id);
+      // NOWE: ustawiamy timestamp jeśli wykonane, lub czyścimy jeśli cofnięte do todo
+      const completedAt = newStatus === 'done' ? new Date().toISOString() : null;
+      
+      await supabase.from('daily_tasks').update({ 
+        status: newStatus,
+        completed_at: completedAt
+      }).eq('id', task.id);
+      
       await fetchDashboardData();
     } catch (error) { console.error("Błąd:", error); }
   };

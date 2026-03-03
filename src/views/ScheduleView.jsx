@@ -290,7 +290,8 @@ export default function ScheduleView({ onBack }) {
     if (selectedDayIdx === -1) return [];
     
     return blocks
-      .filter(b => b.dayIdx === selectedDayIdx)
+      // DODANE: Odfiltrowujemy !b.isMerged, żeby nie wyświetlać egzaminu podwójnie
+      .filter(b => b.dayIdx === selectedDayIdx && !b.isMerged)
       .sort((a, b) => a.startVal - b.startVal); 
   }, [blocks, selectedDate, weekDates]);
 
@@ -544,6 +545,22 @@ export default function ScheduleView({ onBack }) {
                       <div className="mt-2 p-2 bg-[#f1c40f]/10 border border-[#f1c40f]/20 rounded-lg">
                         <span className="text-[11px] text-[#f1c40f] font-medium break-words whitespace-normal line-clamp-4 italic">
                           "{block.note}"
+                        </span>
+                      </div>
+                    )}
+
+                    {/* DODANE: Wyświetlanie egzaminu na telefonach wewnątrz kafelka przedmiotu */}
+                    {block.associatedExam && (
+                      <div 
+                        className="mt-2 p-2 bg-[#e74c3c]/10 border border-[#e74c3c]/30 rounded-lg cursor-pointer active:bg-[#e74c3c]/20 transition-colors"
+                        onClick={(e) => handleBlockClick(e, block.associatedExam)}
+                      >
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="w-4 h-4 rounded bg-[#e74c3c] text-white text-[10px] font-bold flex items-center justify-center shrink-0">!</span>
+                          <span className="text-[10px] font-bold text-[#e74c3c] uppercase tracking-wider">{block.associatedExam.subtitle}</span>
+                        </div>
+                        <span className="text-[11px] text-[#e74c3c] opacity-90 font-medium break-words whitespace-normal">
+                          {block.associatedExam.timeStr.replace(/ \n /g, ' - ')}
                         </span>
                       </div>
                     )}

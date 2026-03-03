@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 
-// Pomocnicze komponenty UI wyciągnięte POZA główny komponent
+// Pomocnicze komponenty UI
 const FormSection = ({ title, footer, children }) => (
   <div className="mb-6">
     {title && <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 ml-4">{title}</h2>}
@@ -29,15 +29,15 @@ export default function EventFormModal({ isOpen, onClose, initialData = null }) 
   // Stany formularza
   const [title, setTitle] = useState('');
   const [listId, setListId] = useState('');
-  
   const [isRecurring, setIsRecurring] = useState(false);
   
   // Daty jednorazowe
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [showEndDate, setShowEndDate] = useState(false); // NOWE: Czy pokazywać pole daty końcowej
   
   // Daty i dzień dla cyklicznych
-  const [dayOfWeek, setDayOfWeek] = useState('0'); // 0 = Mon, 6 = Sun
+  const [dayOfWeek, setDayOfWeek] = useState('0'); 
   const [recStartDate, setRecStartDate] = useState('');
   const [recEndDate, setRecEndDate] = useState('');
 
@@ -45,6 +45,15 @@ export default function EventFormModal({ isOpen, onClose, initialData = null }) 
   const [startTime, setStartTime] = useState('14:00');
   const [endTime, setEndTime] = useState('16:00');
   const [isEndOfDay, setIsEndOfDay] = useState(false);
+  const [endTimeManuallyChanged, setEndTimeManuallyChanged] = useState(false); // NOWE: Czy użytkownik sam ruszył godzinę
+
+  // Pomocnik do dodawania dni
+  const addDays = (dateStr, days) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    d.setDate(d.getDate() + days);
+    return d.toISOString().split('T')[0];
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -60,18 +69,24 @@ export default function EventFormModal({ isOpen, onClose, initialData = null }) 
         setEndTime(eTime);
         setIsEndOfDay(eTime === '23:59' || eTime === '00:00');
         
-        setStartDate(initialData.date || initialData.start_date || todayStr);
-        setEndDate(initialData.end_date || initialData.date || todayStr);
+        const sD = initialData.date || initialData.start_date || todayStr;
+        const eD = initialData.end_date || initialData.date || todayStr;
+        
+        setStartDate(sD);
+        setEndDate(eD);
+        setShowEndDate(sD !== eD); // Jeśli daty są różne, pokaż pole End Date
         
         setDayOfWeek(initialData.day_of_week?.toString() || '0');
         setRecStartDate(initialData.start_date || todayStr);
         setRecEndDate(initialData.end_date || todayStr);
+        setEndTimeManuallyChanged(true); // Przy edycji nie chcemy auto-aktualizacji
       } else {
         setTitle('');
         setListId('');
         setIsRecurring(false);
         setStartDate(todayStr);
         setEndDate(todayStr);
+        setShowEndDate(false);
         setRecStartDate(todayStr);
         
         const in3Months = new Date();
@@ -81,13 +96,37 @@ export default function EventFormModal({ isOpen, onClose, initialData = null }) 
         setStartTime('14:00');
         setEndTime('16:00');
         setIsEndOfDay(false);
+        setEndTimeManuallyChanged(false);
       }
     }
   }, [isOpen, initialData]);
 
-  useEffect(() => {
-    if (isEndOfDay) setEndTime('23:59');
-  }, [isEndOfDay]);
+  // Logika zmiany daty początkowej
+  const handleStartDateChange = (newDate) => {
+    setStartDate(newDate);
+    if (showEndDate) {
+      setEndDate(addDays(newDate, 1));
+    } else {
+      setEndDate(newDate);
+    }
+  };
+
+  // Logika zmiany godziny początkowej
+  const handleStartTimeChange = (newTime) => {
+    setStartTime(newTime);
+    if (!endTimeManuallyChanged) {
+      setEndTime(newTime);
+    }
+  };
+
+  const handleEndTimeChange = (newTime) => {
+    setEndTime(newTime);
+    setEndTimeManuallyChanged(true);
+  };
+
+  const incrementEndDate = () => {
+    setEndDate(prev => addDays(prev, 1));
+  };
 
   if (!isOpen) return null;
 
@@ -108,18 +147,12 @@ export default function EventFormModal({ isOpen, onClose, initialData = null }) 
         endDate: recEndDate
       } : {
         date: startDate,
-        endDate: endDate
+        endDate: showEndDate ? endDate : startDate
       })
     };
 
     await saveCustomEvent(payload, isEditMode);
     onClose();
-  };
-
-  const addOneDay = () => {
-    const d = new Date(startDate);
-    d.setDate(d.getDate() + 1);
-    setEndDate(d.toISOString().split('T')[0]);
   };
 
   return (
@@ -177,21 +210,64 @@ export default function EventFormModal({ isOpen, onClose, initialData = null }) 
               </>
             ) : (
               <>
-                <FormRow label="Start Date"><input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="bg-transparent text-[#3498db] focus:outline-none text-right [color-scheme:dark]" /></FormRow>
-                <div className="bg-[#1c1c1e] px-4 pb-2 pt-1 flex justify-end border-b border-gray-800">
-                  <button onClick={addOneDay} className="text-xs text-[#3498db] font-medium">+1 Day (Tomorrow)</button>
-                </div>
-                <FormRow label="End Date" border={false}><input min={startDate} type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="bg-transparent text-[#3498db] focus:outline-none text-right [color-scheme:dark]" /></FormRow>
+                <FormRow label="Start Date">
+                  <input 
+                    type="date" 
+                    value={startDate} 
+                    onChange={(e) => handleStartDateChange(e.target.value)} 
+                    className="bg-transparent text-[#3498db] focus:outline-none text-right [color-scheme:dark]" 
+                  />
+                </FormRow>
+                
+                {/* NOWE: Przełącznik daty końcowej */}
+                <FormRow label="Multiple Days?">
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" className="sr-only peer" checked={showEndDate} onChange={(e) => {
+                      setShowEndDate(e.target.checked);
+                      if(e.target.checked && endDate === startDate) setEndDate(addDays(startDate, 1));
+                    }} />
+                    <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#3498db]"></div>
+                  </label>
+                </FormRow>
+
+                {showEndDate && (
+                  <>
+                    <FormRow label="End Date">
+                      <input 
+                        min={startDate} 
+                        type="date" 
+                        value={endDate} 
+                        onChange={(e) => setEndDate(e.target.value)} 
+                        className="bg-transparent text-[#3498db] focus:outline-none text-right [color-scheme:dark]" 
+                      />
+                    </FormRow>
+                    <div className="bg-[#1c1c1e] px-4 pb-2 pt-1 flex justify-end border-b border-gray-800">
+                      <button onClick={incrementEndDate} className="text-xs text-[#3498db] font-medium">+1 Day</button>
+                    </div>
+                  </>
+                )}
               </>
             )}
           </FormSection>
 
           <FormSection title="Hours">
-            <FormRow label="Start Time"><input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="bg-transparent text-[#3498db] focus:outline-none text-right [color-scheme:dark]" /></FormRow>
+            <FormRow label="Start Time">
+              <input 
+                type="time" 
+                value={startTime} 
+                onChange={(e) => handleStartTimeChange(e.target.value)} 
+                className="bg-transparent text-[#3498db] focus:outline-none text-right [color-scheme:dark]" 
+              />
+            </FormRow>
             
             {!isEndOfDay && (
               <FormRow label="End Time">
-                <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="bg-transparent text-[#3498db] focus:outline-none text-right [color-scheme:dark]" />
+                <input 
+                  type="time" 
+                  value={endTime} 
+                  onChange={(e) => handleEndTimeChange(e.target.value)} 
+                  className="bg-transparent text-[#3498db] focus:outline-none text-right [color-scheme:dark]" 
+                />
               </FormRow>
             )}
 

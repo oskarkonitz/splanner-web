@@ -6,6 +6,7 @@ import ScheduleView from './ScheduleView'
 import ArchiveView from './ArchiveView'
 import PlanView from './PlanView'
 import TodoView from './TodoView'
+import TodoHistoryView from './TodoHistoryView'
 import SubjectsView from './SubjectsView'
 import GradesView from './GradesView'
 import SubscriptionsView from './SubscriptionsView'
@@ -43,7 +44,8 @@ const getDaysUntil = (targetDate) => {
 
 export default function HomeView() {
   const [activeTab, setActiveTab] = useState("Dashboard")
-  const [targetTodoList, setTargetTodoList] = useState('all') // <--- NOWY STAN
+  const [targetTodoList, setTargetTodoList] = useState('all') 
+  const [historyReturnTab, setHistoryReturnTab] = useState('More') 
   const [currentTime, setCurrentTime] = useState(new Date())
 
   const { 
@@ -67,7 +69,7 @@ export default function HomeView() {
   const [isWindows, setIsWindows] = useState(false);
 
   const mainTabs = ["Dashboard", "Plan", "Todo", "Schedule"];
-  const moreTabs = ["Exam Database & Archive", "Achievements", "Subjects & Semesters", "Grades", "Subscriptions"];
+  const moreTabs = ["Task History", "Exam Database & Archive", "Achievements", "Subjects & Semesters", "Grades", "Subscriptions"];
 
   // --- WYKRYWANIE TRYBU APLIKACJI (PWA) ---
   useEffect(() => {
@@ -83,7 +85,6 @@ export default function HomeView() {
     if (checkIsWindows) {
       const isHidden = localStorage.getItem('hideSPlannerWindowsToast');
       if (!isHidden) {
-        // Opóźnienie 3.5 sekundy przed pokazaniem toasta
         const timer = setTimeout(() => {
           setShowWindowsToast(true);
         }, 3500);
@@ -290,7 +291,6 @@ export default function HomeView() {
 
   // --- DANE DLA NOWYCH WIDGETÓW ---
   
-  // Widget: Tasks for Today
   const todayTasksList = useMemo(() => {
     if (!dailyTasks || !topics) return [];
     const todayStr = new Date(currentTime.getTime() - (currentTime.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
@@ -311,7 +311,6 @@ export default function HomeView() {
     return combined;
   }, [dailyTasks, topics, taskLists, exams, subjects, currentTime]);
 
-  // Widget: Shopping List
   const shoppingItemsList = useMemo(() => {
     if (!dailyTasks || !taskLists) return [];
     
@@ -326,7 +325,6 @@ export default function HomeView() {
       .map(t => ({ id: t.id, name: t.content, listName: mainList.name }));
   }, [dailyTasks, taskLists, settings]);
 
-  // Widget: Upcoming Subscription
   const nextSubscription = useMemo(() => {
     if (!subscriptions || subscriptions.length === 0) return null;
     const today = new Date();
@@ -840,7 +838,8 @@ export default function HomeView() {
 
         <nav className="flex-1 flex flex-col gap-1 mt-2">
           <div className="text-xs text-gray-500 font-bold uppercase mb-2">Main Menu</div>
-          {[...mainTabs, ...moreTabs].filter(t => t !== "Dashboard").map((item) => (
+          {/* ODfiltrowanie 'Task History', żeby nie duplikowało opcji na PC */}
+          {[...mainTabs, ...moreTabs].filter(t => t !== "Dashboard" && t !== "Task History").map((item) => (
             <button 
               key={item}
               onClick={() => {
@@ -869,7 +868,16 @@ export default function HomeView() {
         ) : activeTab === "Plan" ? (
           <PlanView onBack={() => setActiveTab("Dashboard")} />
         ) : activeTab === "Todo" ? (
-          <TodoView onBack={() => setActiveTab("Dashboard")} initialListId={targetTodoList} />
+          <TodoView 
+            onBack={() => setActiveTab("Dashboard")} 
+            initialListId={targetTodoList} 
+            onOpenHistory={() => {
+              setHistoryReturnTab("Todo"); 
+              setActiveTab("Task History");
+            }} 
+          />
+        ) : activeTab === "Task History" ? (
+          <TodoHistoryView onBack={() => setActiveTab(historyReturnTab)} />
         ) : activeTab === "Subjects & Semesters" ? (
           <SubjectsView onBack={() => setActiveTab("More")} />
         ) : activeTab === "Grades" ? (
@@ -908,7 +916,10 @@ export default function HomeView() {
                 {moreTabs.map(item => (
                   <button 
                     key={item}
-                    onClick={() => setActiveTab(item)}
+                    onClick={() => {
+                      if (item === "Task History") setHistoryReturnTab("More"); 
+                      setActiveTab(item);
+                    }}
                     className="bg-[#1c1c1e] p-4 rounded-2xl flex justify-between items-center active:scale-95 transition-transform"
                   >
                     <span className="font-medium text-gray-200">{item}</span>
@@ -918,7 +929,7 @@ export default function HomeView() {
               </div>
             )}
 
-            {activeTab !== "Dashboard" && activeTab !== "More" && activeTab !== "Settings" && activeTab !== "Schedule" && activeTab !== "Exam Database & Archive" && activeTab !== "Plan" && activeTab !== "Subjects & Semesters" && activeTab !== "Grades" && activeTab !== "Subscriptions" && activeTab !== "Achievements" &&(
+            {activeTab !== "Dashboard" && activeTab !== "More" && activeTab !== "Settings" && activeTab !== "Schedule" && activeTab !== "Exam Database & Archive" && activeTab !== "Plan" && activeTab !== "Todo" && activeTab !== "Task History" && activeTab !== "Subjects & Semesters" && activeTab !== "Grades" && activeTab !== "Subscriptions" && activeTab !== "Achievements" &&(
               <div className="bg-[#1c1c1e] p-10 rounded-3xl border border-white/5 flex flex-col items-center justify-center text-gray-500 min-h-[300px]">
                 <span className="text-4xl mb-4">🚧</span>
                 <p>Widok <strong>{activeTab}</strong> jest w budowie...</p>

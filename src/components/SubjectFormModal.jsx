@@ -42,13 +42,23 @@ export default function SubjectFormModal({ isOpen, onClose, initialData = null }
   const [slots, setSlots] = useState([]);
 
   // Stany Edytora Slotu
-  const [activeSlotIndex, setActiveSlotIndex] = useState(null); // null = ukryty, -1 = nowy, >=0 = edycja
+  const [activeSlotIndex, setActiveSlotIndex] = useState(null); 
   const [slotDay, setSlotDay] = useState(0);
   const [slotStart, setSlotStart] = useState('08:00');
   const [slotEnd, setSlotEnd] = useState('09:30');
   const [slotRoom, setSlotRoom] = useState('');
-  const [slotType, setSlotType] = useState('Lecture'); // Domyślny tekst
-  const [slotFrequency, setSlotFrequency] = useState('weekly'); // NOWE: Stan częstotliwości
+  const [slotType, setSlotType] = useState('Lecture'); 
+  const [slotFrequency, setSlotFrequency] = useState('weekly'); 
+
+  // POMOCNIK: Dodawanie minut do formatu HH:mm
+  const addMinutes = (timeStr, mins) => {
+    const [h, m] = timeStr.split(':').map(Number);
+    const date = new Date();
+    date.setHours(h, m + mins);
+    const newH = String(date.getHours()).padStart(2, '0');
+    const newM = String(date.getMinutes()).padStart(2, '0');
+    return `${newH}:${newM}`;
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -107,8 +117,8 @@ export default function SubjectFormModal({ isOpen, onClose, initialData = null }
       setSlotStart('08:00');
       setSlotEnd('09:30');
       setSlotRoom('');
-      setSlotType('Lecture'); // Domyślnie proponuje słowo, można je skasować
-      setSlotFrequency('weekly'); // NOWE: Domyślnie co tydzień
+      setSlotType('Lecture'); 
+      setSlotFrequency('weekly'); 
     } else {
       const s = slots[index];
       setSlotDay(s.day_of_week);
@@ -116,9 +126,16 @@ export default function SubjectFormModal({ isOpen, onClose, initialData = null }
       setSlotEnd(s.end_time);
       setSlotRoom(s.room || '');
       setSlotType(s.type || '');
-      setSlotFrequency(s.frequency || 'weekly'); // NOWE: Wczytywanie częstotliwości
+      setSlotFrequency(s.frequency || 'weekly'); 
     }
     setActiveSlotIndex(index);
+  };
+
+  // NOWE: Handler zmiany czasu startu
+  const handleStartTimeChange = (newStartTime) => {
+    setSlotStart(newStartTime);
+    const newEndTime = addMinutes(newStartTime, 90);
+    setSlotEnd(newEndTime);
   };
 
   const saveSlot = () => {
@@ -128,7 +145,7 @@ export default function SubjectFormModal({ isOpen, onClose, initialData = null }
       end_time: slotEnd,
       room: slotRoom,
       type: slotType,
-      frequency: slotFrequency // NOWE: Zapis do obiektu
+      frequency: slotFrequency 
     };
 
     if (activeSlotIndex === -1) {
@@ -238,10 +255,23 @@ export default function SubjectFormModal({ isOpen, onClose, initialData = null }
                   {DAYS.map((d, i) => <option key={i} value={i}>{d}</option>)}
                 </select>
               </FormRow>
-              <FormRow label="Start Time"><input type="time" value={slotStart} onChange={(e) => setSlotStart(e.target.value)} className="bg-transparent text-[#3498db] focus:outline-none text-right [color-scheme:dark]" /></FormRow>
-              <FormRow label="End Time"><input type="time" value={slotEnd} onChange={(e) => setSlotEnd(e.target.value)} className="bg-transparent text-[#3498db] focus:outline-none text-right [color-scheme:dark]" /></FormRow>
+              <FormRow label="Start Time">
+                <input 
+                  type="time" 
+                  value={slotStart} 
+                  onChange={(e) => handleStartTimeChange(e.target.value)} 
+                  className="bg-transparent text-[#3498db] focus:outline-none text-right [color-scheme:dark]" 
+                />
+              </FormRow>
+              <FormRow label="End Time">
+                <input 
+                  type="time" 
+                  value={slotEnd} 
+                  onChange={(e) => setSlotEnd(e.target.value)} 
+                  className="bg-transparent text-[#3498db] focus:outline-none text-right [color-scheme:dark]" 
+                />
+              </FormRow>
               
-              {/* NOWE: Wybór częstotliwości */}
               <FormRow label="Frequency">
                 <select 
                   value={slotFrequency} 

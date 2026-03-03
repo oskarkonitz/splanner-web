@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { useData } from '../context/DataContext';
 import NoteEditorModal from '../components/NoteEditorModal';
 
-export default function TodoView({ onBack, initialListId = 'all' }) {
+export default function TodoView({ onBack, initialListId = 'all', onOpenHistory }) {
   const { 
     dailyTasks, taskLists, saveTask, deleteTask, toggleTaskStatus, 
     sweepCompletedTasks, saveTaskList, deleteTaskList 
@@ -35,8 +35,8 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
   // Drag & Drop
-  const [draggedOverList, setDraggedOverList] = useState(null); // Dla bocznego menu
-  const [draggedOverDate, setDraggedOverDate] = useState(null); // Dla głównego okna dat (jak w PlanView)
+  const [draggedOverList, setDraggedOverList] = useState(null); 
+  const [draggedOverDate, setDraggedOverDate] = useState(null); 
 
   // --- HELPERS ---
   const todayStr = useMemo(() => {
@@ -253,7 +253,6 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
     e.dataTransfer.effectAllowed = 'move';
   };
 
-  // Drag over daty na liście głównej (tak jak w PlanView)
   const handleDragOverDate = (e, dateVal) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
@@ -278,7 +277,6 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
     }
   };
 
-  // Drag over boczne menu list
   const onDragOverList = (e, listId) => { 
     e.preventDefault(); 
     e.dataTransfer.dropEffect = 'move';
@@ -450,6 +448,19 @@ export default function TodoView({ onBack, initialListId = 'all' }) {
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
+              
+              {/* DODANE: Przycisk Historii dla Desktopu */}
+              {onOpenHistory && (
+                <button 
+                  onClick={onOpenHistory}
+                  className="hidden md:flex items-center gap-2 text-sm font-bold text-gray-400 hover:text-[#3498db] bg-[#2b2b2b] px-3 py-1.5 rounded-xl border border-gray-700 hover:border-[#3498db]/50 transition-colors shrink-0"
+                  title="Task History"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                  History
+                </button>
+              )}
+
               <div className="md:hidden flex items-center gap-2 bg-[#2b2b2b] px-2 py-1 rounded-xl border border-gray-700">
                 {!isShoppingList && !showDateInput && (
                   <button type="button" onClick={() => setShowDateInput(true)} className="text-gray-400 hover:text-[#3498db] transition-colors p-1" title="Set Date">
