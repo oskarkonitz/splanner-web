@@ -318,27 +318,6 @@ export default function AdminPanelView({ onBack }) {
                         </button>
                       </div>
                     </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Or Share Direct Invite Link</label>
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <input
-                          type="text"
-                          readOnly
-                          value={`${window.location.origin}?invite=true`}
-                          className="flex-1 bg-[#2b2b2b] text-gray-400 px-4 py-2.5 rounded-xl border border-gray-700 focus:outline-none text-sm"
-                        />
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(`${window.location.origin}?invite=true`);
-                            alert('Invite link copied to clipboard!');
-                          }}
-                          className="bg-gray-700 text-white px-5 py-2.5 rounded-xl font-bold hover:bg-gray-600 transition-colors whitespace-nowrap"
-                        >
-                          Copy Link
-                        </button>
-                      </div>
-                    </div>
                   </div>
                 </div>
 

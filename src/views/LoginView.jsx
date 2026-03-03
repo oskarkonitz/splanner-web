@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { supabase } from '../api/supabase'
 
 export default function LoginView({ registrationEnabled = true }) {
@@ -9,19 +9,6 @@ export default function LoginView({ registrationEnabled = true }) {
   const [isLoading, setIsLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState(null)
   const [successMsg, setSuccessMsg] = useState(null)
-  
-  const [isInvited, setIsInvited] = useState(false)
-
-  // Sprawdzanie czy użytkownik wszedł z linku zapraszającego
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('invite') === 'true' || window.location.hash.includes('invite=true')) {
-      setIsInvited(true);
-      setIsRegistering(true); 
-    }
-  }, [])
-
-  const canRegister = registrationEnabled || isInvited;
 
   // Główna funkcja obsługująca logowanie, rejestrację i reset hasła
   const handleSubmit = async (e) => {
@@ -41,8 +28,8 @@ export default function LoginView({ registrationEnabled = true }) {
           setSuccessMsg("Password reset link has been sent to your email.")
         }
       } else if (isRegistering) {
-        // Rejestracja - dodatkowe zabezpieczenie
-        if (!canRegister) {
+        // Rejestracja - twarde zabezpieczenie
+        if (!registrationEnabled) {
           throw new Error("Registration is currently disabled by the administrator.");
         }
         const res = await supabase.auth.signUp({ email, password })
@@ -67,7 +54,7 @@ export default function LoginView({ registrationEnabled = true }) {
     setErrorMsg(null)
     setSuccessMsg(null)
     if (mode === 'register') {
-      if (!canRegister) return; // Zabezpieczenie
+      if (!registrationEnabled) return; // Zabezpieczenie
       setIsRegistering(true)
       setIsForgotPassword(false)
     } else if (mode === 'forgot') {
@@ -89,16 +76,9 @@ export default function LoginView({ registrationEnabled = true }) {
           {isForgotPassword 
             ? "Enter your email to receive a password reset link" 
             : isRegistering 
-              ? (isInvited ? "Complete your invited account" : "Create your account") 
+              ? "Create your account" 
               : "Sign in to continue"}
         </p>
-        
-        {/* Odznaka zaproszenia */}
-        {isInvited && !isForgotPassword && (
-          <span className="mt-2 text-[10px] bg-[#3498db]/20 text-[#3498db] px-2 py-1 rounded-full font-bold uppercase tracking-wider border border-[#3498db]/30">
-            Invitation Active
-          </span>
-        )}
       </div>
 
       {/* Formularz */}
@@ -184,7 +164,7 @@ export default function LoginView({ registrationEnabled = true }) {
           >
             Already have an account? Login
           </button>
-        ) : canRegister ? (
+        ) : registrationEnabled ? (
           <button
             onClick={() => toggleMode('register')}
             className="text-sm text-gray-400 hover:text-white transition-colors"
