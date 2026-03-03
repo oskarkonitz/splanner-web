@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../api/supabase'
 import { useData } from '../context/DataContext'
 import SettingsView from './SettingsView'
@@ -12,7 +12,7 @@ import GradesView from './GradesView'
 import SubscriptionsView from './SubscriptionsView'
 import AchievementsView from './AchievementsView'
 import AdminPanelView from './AdminPanelView'
-import FeedbackView from './FeedbackView' // <-- IMPORT FEEDBACK VIEW
+import FeedbackView from './FeedbackView'
 
 // --- FUNKCJE POMOCNICZE DLA SUBSKRYPCJI ---
 const getNextBillingDate = (billingDateStr, cycle) => {
@@ -70,6 +70,18 @@ export default function HomeView() {
   const [isStandalone, setIsStandalone] = useState(false);
   const [isBannerDismissed, setIsBannerDismissed] = useState(false);
   const [isToastDismissed, setIsToastDismissed] = useState(false);
+  const [showAdminToast, setShowAdminToast] = useState(false);
+
+  // --- OPÓŹNIENIE DLA TOAST MESSAGE ---
+  useEffect(() => {
+    if (appConfig?.toast_message?.active && !isToastDismissed) {
+      const timer = setTimeout(() => {
+        setShowAdminToast(true);
+      }, 800);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [appConfig?.toast_message?.active, isToastDismissed]);
   
   // --- STANY DLA POWIADOMIENIA WINDOWS ---
   const [showWindowsToast, setShowWindowsToast] = useState(false);
@@ -86,13 +98,11 @@ export default function HomeView() {
 
 // --- WYKRYWANIE WINDOWS & LOGIKA TOASTA ---
   useEffect(() => {
-    // Sprawdzamy, czy w ogóle mamy załadowany config i czy toast jest włączony
     if (!appConfig || !appConfig.windows_support) return;
 
     const checkIsWindows = /Win/i.test(navigator.userAgent);
     setIsWindows(checkIsWindows);
 
-    // Pokazuj tylko jeśli użytkownik ma Windowsa I opcja w panelu admina jest włączona
     if (checkIsWindows && appConfig.windows_support.show_toast) {
       const isHidden = localStorage.getItem('hideSPlannerWindowsToast');
       if (!isHidden) {
@@ -102,7 +112,7 @@ export default function HomeView() {
         return () => clearTimeout(timer);
       }
     } else {
-      setShowWindowsToast(false); // Wymusza ukrycie, jeśli wyłączyłeś to w locie jako admin
+      setShowWindowsToast(false);
     }
   }, [appConfig?.windows_support?.show_toast]);
 
@@ -313,7 +323,9 @@ export default function HomeView() {
   
   const todayTasksList = useMemo(() => {
     if (!dailyTasks || !topics) return [];
-    const todayStr = new Date(currentTime.getTime() - (currentTime.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    const now = new Date();
+    // USUNIĘTO zależność od currentTime, lista nie będzie się przeliczać i resetować co sekundę!
+    const todayStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
     
     const shoppingListIDs = new Set((taskLists || []).filter(l => l.list_type === 'shopping').map(l => l.id));
     
@@ -329,7 +341,7 @@ export default function HomeView() {
       })
     ];
     return combined;
-  }, [dailyTasks, topics, taskLists, exams, subjects, currentTime]);
+  }, [dailyTasks, topics, taskLists, exams, subjects]); // <-- currentTime usunięte stąd
 
   const shoppingItemsList = useMemo(() => {
     if (!dailyTasks || !taskLists) return [];
@@ -376,6 +388,88 @@ export default function HomeView() {
     
     return { ...target, daysLeft: days, subjColor: subj?.color || '#8e44ad' };
   }, [subscriptions, subjects]);
+
+  // --- ZMIENNE DETERMINUJĄCE CZY POTRZEBA ANIMACJI ---
+  const tasksNeedScroll = todayTasksList.length > 4;
+  const shoppingNeedScroll = shoppingItemsList.length > 4;
+
+  // --- REFERENCJE I LOGIKA NIESKOŃCZONEGO SCROLLA ---
+  const tasksScrollRef = useRef(null);
+  const shoppingScrollRef = useRef(null);
+
+  // Efekt nieskończonej pętli dla "Tasks"
+  useEffect(() => {
+    if (activeTab !== "Dashboard" || isLoading || !tasksNeedScroll) return;
+
+    const el = tasksScrollRef.current;
+    if (!el) return;
+
+    let animationFrameId;
+    let exactScrollY = 0; 
+    const scrollSpeed = 0.3; 
+
+    el.scrollTop = 0;
+
+    const scrollStep = () => {
+      if (!el || !el.firstElementChild) return;
+      
+      exactScrollY += scrollSpeed;
+      const resetPoint = el.firstElementChild.offsetHeight;
+      
+      if (exactScrollY >= resetPoint) {
+        exactScrollY -= resetPoint;
+      }
+      
+      el.scrollTop = exactScrollY;
+      animationFrameId = requestAnimationFrame(scrollStep);
+    };
+
+    const timeoutId = setTimeout(() => {
+      animationFrameId = requestAnimationFrame(scrollStep);
+    }, 0);
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    };
+  }, [todayTasksList, tasksNeedScroll, activeTab, isLoading]);
+
+  // Efekt nieskończonej pętli dla "Shopping"
+  useEffect(() => {
+    if (activeTab !== "Dashboard" || isLoading || !shoppingNeedScroll) return;
+
+    const el = shoppingScrollRef.current;
+    if (!el) return;
+
+    let animationFrameId;
+    let exactScrollY = 0; 
+    const scrollSpeed = 0.3;
+
+    el.scrollTop = 0;
+
+    const scrollStep = () => {
+      if (!el || !el.firstElementChild) return;
+      
+      exactScrollY += scrollSpeed;
+      const resetPoint = el.firstElementChild.offsetHeight;
+
+      if (exactScrollY >= resetPoint) {
+        exactScrollY -= resetPoint;
+      }
+      
+      el.scrollTop = exactScrollY;
+      animationFrameId = requestAnimationFrame(scrollStep);
+    };
+
+    const timeoutId = setTimeout(() => {
+      animationFrameId = requestAnimationFrame(scrollStep);
+    }, 0);
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    };
+  }, [shoppingItemsList, shoppingNeedScroll, activeTab, isLoading]);
 
   // --- LOGIKA ODZNAK W MENU BOCZNYM ---
   const renderMenuBadge = (tabName) => {
@@ -563,6 +657,14 @@ export default function HomeView() {
           .animate-pulse-ring {
             animation: pulseRing 1.2s ease-out infinite;
           }
+          /* Ukrywanie paska przewijania dla widgetów */
+          .no-scrollbar::-webkit-scrollbar {
+            display: none;
+          }
+          .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+          }
         `}</style>
 
         {/* WIDGETY PROGRESU (MOBILE) */}
@@ -721,27 +823,38 @@ export default function HomeView() {
                 setActiveTab('Todo');
               }
             }}
-            className={`bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] max-h-[180px] ${todayTasksList.length > 0 ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''}`}
+            className={`bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] max-h-[180px] overflow-hidden ${todayTasksList.length > 0 ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''}`}
           >
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-3 shrink-0">
               <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Tasks for Today</span>
               {todayTasksList.length > 0 && <span className="text-xs bg-blue-500/20 text-[#3498db] px-2 py-0.5 rounded-full font-bold">{todayTasksList.length}</span>}
             </div>
             
-            <div className="flex-1 overflow-hidden flex flex-col gap-2">
+            <div 
+              ref={tasksScrollRef}
+              className="flex-1 overflow-hidden flex flex-col relative"
+            >
               {isLoading ? (
                 <div className="flex-1 flex items-center justify-center text-gray-400 font-medium">Loading...</div>
               ) : todayTasksList.length > 0 ? (
                 <>
-                  {todayTasksList.slice(0, 4).map(t => (
-                    <div key={t.id} className="flex items-center gap-2 text-sm truncate">
-                      <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: t.color }}></div>
-                      <span className="text-gray-200 truncate">{t.title}</span>
-                    </div>
-                  ))}
-                  {todayTasksList.length > 4 && (
-                    <div className="text-xs text-gray-500 font-medium mt-1 ml-3">
-                      +{todayTasksList.length - 4} more items...
+                  <div className="flex flex-col gap-2 pb-2">
+                    {todayTasksList.map(t => (
+                      <div key={t.id} className="flex items-center gap-2 text-sm truncate shrink-0">
+                        <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: t.color }}></div>
+                        <span className="text-gray-200 truncate">{t.title}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Skopiowana lista - tworząca złudzenie nieskończoności (tylko gdy scroll jest potrzebny) */}
+                  {tasksNeedScroll && (
+                    <div className="flex flex-col gap-2 pb-2">
+                      {todayTasksList.map(t => (
+                        <div key={`dup-${t.id}`} className="flex items-center gap-2 text-sm truncate shrink-0">
+                          <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: t.color }}></div>
+                          <span className="text-gray-200 truncate">{t.title}</span>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </>
@@ -760,14 +873,17 @@ export default function HomeView() {
               setTargetTodoList(settings?.main_shopping_list_id || 'all'); 
               setActiveTab('Todo');
             }} 
-            className="bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] max-h-[180px] cursor-pointer hover:bg-white/5 transition-colors"
+            className={`bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] max-h-[180px] overflow-hidden ${shoppingItemsList.length > 0 ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''}`}
           >
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-3 shrink-0">
               <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Shopping List</span>
               {shoppingItemsList.length > 0 && <span className="text-xs bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded-full font-bold">{shoppingItemsList.length}</span>}
             </div>
             
-            <div className="flex-1 overflow-hidden flex flex-col gap-2">
+            <div 
+              ref={shoppingScrollRef}
+              className="flex-1 overflow-hidden flex flex-col relative"
+            >
               {isLoading ? (
                 <div className="flex-1 flex items-center justify-center text-gray-400 font-medium">Loading...</div>
               ) : !settings?.main_shopping_list_id ? ( 
@@ -777,15 +893,24 @@ export default function HomeView() {
                 </div>
               ) : shoppingItemsList.length > 0 ? (
                 <>
-                  {shoppingItemsList.slice(0, 4).map(item => (
-                    <div key={item.id} className="flex items-center gap-2 text-sm truncate">
-                      <span className="text-orange-400 shrink-0 text-xs">•</span>
-                      <span className="text-gray-200 truncate">{item.name}</span>
-                    </div>
-                  ))}
-                  {shoppingItemsList.length > 4 && (
-                    <div className="text-xs text-gray-500 font-medium mt-1 ml-3">
-                      +{shoppingItemsList.length - 4} more items...
+                  {/* Główna lista zakupów */}
+                  <div className="flex flex-col gap-2 pb-2">
+                    {shoppingItemsList.map(item => (
+                      <div key={item.id} className="flex items-center gap-2 text-sm truncate shrink-0">
+                        <span className="text-orange-400 shrink-0 text-xs">•</span>
+                        <span className="text-gray-200 truncate">{item.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Skopiowana lista zakupów (tylko gdy scroll jest potrzebny) */}
+                  {shoppingNeedScroll && (
+                    <div className="flex flex-col gap-2 pb-2">
+                      {shoppingItemsList.map(item => (
+                        <div key={`dup-${item.id}`} className="flex items-center gap-2 text-sm truncate shrink-0">
+                          <span className="text-orange-400 shrink-0 text-xs">•</span>
+                          <span className="text-gray-200 truncate">{item.name}</span>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </>
@@ -1009,7 +1134,7 @@ export default function HomeView() {
                     className="p-2.5 text-[#e74c3c] hover:text-white bg-[#1c1c1e] hover:bg-[#e74c3c]/30 rounded-full transition-colors border border-gray-800"
                     title="Admin Panel"
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
                   </button>
                 )}
 
@@ -1101,9 +1226,11 @@ export default function HomeView() {
         )}
 
         {/* NOWY POPUP ADMINA (Toast Message) */}
-        {appConfig?.toast_message?.active && !isToastDismissed && (
+        {appConfig?.toast_message?.active && (
           <div 
-            className="fixed bottom-[140px] md:bottom-36 right-6 z-50 bg-[#1c1c1e] border border-gray-700 rounded-2xl shadow-2xl p-5 w-72 md:w-80 animate-in slide-in-from-right-8 duration-500"
+            className={`fixed bottom-[140px] md:bottom-36 right-6 z-50 bg-[#1c1c1e] border border-gray-700 rounded-2xl shadow-2xl p-5 w-72 md:w-80 transform transition-all duration-500 ease-in-out ${
+              showAdminToast && !isToastDismissed ? 'translate-x-0 opacity-100' : 'translate-x-[150%] opacity-0 pointer-events-none'
+            }`}
           >
             <button 
               onClick={() => setIsToastDismissed(true)}

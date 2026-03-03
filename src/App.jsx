@@ -18,13 +18,20 @@ function App() {
   const [passwordMessage, setPasswordMessage] = useState({ type: '', text: '' })
 
   const [maintenanceActive, setMaintenanceActive] = useState(false)
+  const [registrationEnabled, setRegistrationEnabled] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false)
 
   const checkSystemStatus = async (currentSession) => {
     try {
-      const { data: configData } = await supabase.from('app_config').select('value').eq('key', 'maintenance').single()
-      const isMaint = configData?.value?.active || false
+      // Pobieramy wszystkie klucze z app_config od razu
+      const { data: configData } = await supabase.from('app_config').select('key, value')
+      
+      const maintConfig = configData?.find(c => c.key === 'maintenance')?.value
+      const isMaint = maintConfig?.active || false
       setMaintenanceActive(isMaint)
+
+      const regConfig = configData?.find(c => c.key === 'registration')?.value
+      setRegistrationEnabled(regConfig?.enabled ?? true)
 
       let userIsAdmin = false
       if (currentSession?.user) {
@@ -164,7 +171,7 @@ function App() {
               </div>
             )}
 
-            <LoginView />
+            <LoginView registrationEnabled={registrationEnabled} />
           </div>
         ) : isMaintenanceBlocked ? (
           <div className="flex-1 flex flex-col items-center justify-center p-6 text-center animate-in fade-in zoom-in-95 duration-500">

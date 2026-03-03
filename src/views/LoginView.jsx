@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../api/supabase'
 
-export default function LoginView() {
+export default function LoginView({ registrationEnabled = true }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isRegistering, setIsRegistering] = useState(false)
@@ -9,6 +9,17 @@ export default function LoginView() {
   const [isLoading, setIsLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState(null)
   const [successMsg, setSuccessMsg] = useState(null)
+  const [isInvited, setIsInvited] = useState(false)
+
+  // Sprawdzanie czy użytkownik wszedł z linku zapraszającego
+  useEffect(() => {
+    if (window.location.search.includes('invite=true') || window.location.hash.includes('invite=true')) {
+      setIsInvited(true)
+      setIsRegistering(true) 
+    }
+  }, [])
+
+  const canRegister = registrationEnabled || isInvited;
 
   // Główna funkcja obsługująca logowanie, rejestrację i reset hasła
   const handleSubmit = async (e) => {
@@ -28,7 +39,10 @@ export default function LoginView() {
           setSuccessMsg("Password reset link has been sent to your email.")
         }
       } else if (isRegistering) {
-        // Rejestracja
+        // Rejestracja - dodatkowe zabezpieczenie
+        if (!canRegister) {
+          throw new Error("Registration is currently disabled by the administrator.");
+        }
         const res = await supabase.auth.signUp({ email, password })
         error = res.error
       } else {
@@ -51,7 +65,8 @@ export default function LoginView() {
     setErrorMsg(null)
     setSuccessMsg(null)
     if (mode === 'register') {
-      setIsRegistering(!isRegistering)
+      if (!canRegister) return; // Zabezpieczenie
+      setIsRegistering(true)
       setIsForgotPassword(false)
     } else if (mode === 'forgot') {
       setIsForgotPassword(true)
@@ -153,14 +168,21 @@ export default function LoginView() {
           >
             Back to Login
           </button>
-        ) : (
+        ) : isRegistering ? (
+          <button
+            onClick={() => toggleMode('login')}
+            className="text-sm text-gray-400 hover:text-white transition-colors"
+          >
+            Already have an account? Login
+          </button>
+        ) : canRegister ? (
           <button
             onClick={() => toggleMode('register')}
             className="text-sm text-gray-400 hover:text-white transition-colors"
           >
-            {isRegistering ? "Already have an account? Login" : "No account? Register here"}
+            No account? Register here
           </button>
-        )}
+        ) : null}
       </div>
 
     </div>
