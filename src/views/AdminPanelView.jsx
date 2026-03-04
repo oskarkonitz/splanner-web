@@ -34,10 +34,13 @@ export default function AdminPanelView({ onBack }) {
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [userSearchQuery, setUserSearchQuery] = useState('');
   
-  // NOWE: Stany dla Modalu Użytkownika
+  // Stany dla Modalu Użytkownika
   const [selectedUser, setSelectedUser] = useState(null);
   const [selectedUserStats, setSelectedUserStats] = useState(null);
   const [isLoadingUserStats, setIsLoadingUserStats] = useState(false);
+  
+  // NOWE: Stan dla edycji linku do wideo w modalu użytkownika
+  const [videoUrlInput, setVideoUrlInput] = useState('');
 
   // Filtrowanie i sortowanie zgłoszeń
   const sortedFeedback = useMemo(() => {
@@ -124,6 +127,7 @@ export default function AdminPanelView({ onBack }) {
   const openUserModal = (user) => {
     setSelectedUser(user);
     setSelectedUserStats(null); // Reset statystyk przy otwarciu nowego
+    setVideoUrlInput(user.custom_splash_video_url || ''); // Ustawienie obecnego linku do wideo
   };
 
   const fetchSpecificUserStats = async (userId) => {
@@ -178,8 +182,29 @@ export default function AdminPanelView({ onBack }) {
   };
 
   const handleDeleteUser = () => {
-    // Usunięcie konta autoryzacyjnego wymaga Edge Function
     alert("Delete Action: Modifying auth.users requires a secure Edge Function with a service_role key. You need to implement an 'admin-delete-user' function in Supabase first.");
+  };
+
+  // NOWE: Zapisywanie customowego wideo dla użytkownika
+  const handleUpdateVideoUrl = async () => {
+    if (!selectedUser) return;
+    try {
+      const urlToSave = videoUrlInput.trim() === '' ? null : videoUrlInput.trim();
+      const { error } = await supabase
+        .from('profiles')
+        .update({ custom_splash_video_url: urlToSave })
+        .eq('id', selectedUser.id);
+        
+      if (error) throw error;
+      
+      const updatedUser = { ...selectedUser, custom_splash_video_url: urlToSave };
+      setSelectedUser(updatedUser);
+      setUsersList(usersList.map(u => u.id === selectedUser.id ? updatedUser : u));
+      alert("Custom splash video URL updated successfully!");
+    } catch (err) {
+      console.error("Błąd aktualizacji URL wideo:", err);
+      alert("Failed to update video URL.");
+    }
   };
 
   // --- HANDLERY KONFIGURACJI ---
@@ -428,7 +453,6 @@ export default function AdminPanelView({ onBack }) {
               </div>
             )}
 
-            {/* ZAKŁADKA UŻYTKOWNIKÓW */}
             {activeTab === 'Users' && (
               <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-800 pb-2">
@@ -664,7 +688,7 @@ export default function AdminPanelView({ onBack }) {
         </div>
       )}
 
-      {/* NOWE: MODAL DO OBSŁUGI UŻYTKOWNIKA */}
+      {/* MODAL DO OBSŁUGI UŻYTKOWNIKA */}
       {selectedUser && (
         <div className="fixed inset-0 bg-black/80 z-[60] flex justify-center items-center p-4">
           <div className="bg-[#1c1c1e] rounded-3xl w-full max-w-xl max-h-[90vh] overflow-y-auto border border-gray-700 shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
@@ -733,6 +757,27 @@ export default function AdminPanelView({ onBack }) {
                     Click "Load Stats" to fetch this user's data from the database.
                   </div>
                 )}
+              </div>
+
+              {/* NOWE: Sekcja Custom Video Splash */}
+              <div className="bg-[#2b2b2b] p-4 rounded-2xl border border-white/5 space-y-3">
+                <span className="text-xs font-bold text-[#3498db] uppercase">Custom Splash Video</span>
+                <p className="text-xs text-gray-400">Provide an MP4 URL. If set, this user will see the video instead of the normal loading screen upon login.</p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={videoUrlInput}
+                    onChange={(e) => setVideoUrlInput(e.target.value)}
+                    placeholder="https://example.com/video.mp4"
+                    className="flex-1 bg-[#1c1c1e] text-white px-3 py-2 rounded-xl border border-gray-700 focus:border-[#3498db] focus:outline-none text-sm"
+                  />
+                  <button
+                    onClick={handleUpdateVideoUrl}
+                    className="bg-[#3498db] hover:bg-[#2980b9] text-white px-4 py-2 rounded-xl text-sm font-bold transition-colors whitespace-nowrap"
+                  >
+                    Save URL
+                  </button>
+                </div>
               </div>
 
               {/* Sekcja Akcji */}

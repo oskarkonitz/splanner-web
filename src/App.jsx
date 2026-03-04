@@ -23,6 +23,9 @@ function App() {
   const [maintenanceActive, setMaintenanceActive] = useState(false)
   const [registrationEnabled, setRegistrationEnabled] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false)
+  
+  // NOWE: Stan dla wideo splasha konkretnego usera
+  const [customVideoUrl, setCustomVideoUrl] = useState(null)
 
   const checkSystemStatus = async (currentSession) => {
     try {
@@ -36,6 +39,19 @@ function App() {
 
       let userIsAdmin = false
       if (currentSession?.user) {
+        // Pobieranie profilu w tym naszego customowego wideo
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('custom_splash_video_url')
+          .eq('id', currentSession.user.id)
+          .single()
+          
+        if (profileData?.custom_splash_video_url) {
+          setCustomVideoUrl(profileData.custom_splash_video_url)
+        } else {
+          setCustomVideoUrl(null)
+        }
+
         const { data: adminData } = await supabase.from('admins').select('user_id').eq('user_id', currentSession.user.id)
         userIsAdmin = adminData && adminData.length > 0
       }
@@ -217,7 +233,7 @@ function App() {
 
       {showSplash && !isMaintenanceBlocked && (
         <div className="absolute inset-0 z-50">
-          <SplashView onFinish={() => setShowSplash(false)} />
+          <SplashView onFinish={() => setShowSplash(false)} videoUrl={customVideoUrl} />
         </div>
       )}
     </div>

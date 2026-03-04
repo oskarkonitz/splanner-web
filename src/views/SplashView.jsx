@@ -1,14 +1,20 @@
 import { useState, useEffect } from 'react'
 
-export default function SplashView({ onFinish }) {
+export default function SplashView({ onFinish, videoUrl }) {
   // Stany odpowiadające Twoim ze Swifta
   const [statusText, setStatusText] = useState("Initializing...")
   const [progressValue, setProgressValue] = useState(0)
   const [textOpacity, setTextOpacity] = useState(1) // 1 = widoczny, 0 = ukryty
   const [finalScale, setFinalScale] = useState(1)
   const [finalOpacity, setFinalOpacity] = useState(1)
+  
+  // NOWE: Stan do płynnego znikania wideo
+  const [videoOpacity, setVideoOpacity] = useState(1)
 
   useEffect(() => {
+    // Jeżeli dostaliśmy wideo, nie odpalaj timerów z logiem
+    if (videoUrl) return;
+
     // Start - 0s
     setTimeout(() => {
       setProgressValue(20)
@@ -47,7 +53,38 @@ export default function SplashView({ onFinish }) {
     setTimeout(() => {
       onFinish()
     }, 3100)
-  }, [onFinish])
+  }, [onFinish, videoUrl])
+
+  // NOWE: Funkcja obsługująca koniec filmu z płynnym przejściem
+  const handleVideoEnd = () => {
+    setVideoOpacity(0); // Zmieniamy krycie na 0, odpala się animacja CSS
+    
+    // Czekamy 500ms (tyle ile trwa animacja 'duration-500'), a potem wpuszczamy do apki
+    setTimeout(() => {
+      onFinish();
+    }, 500);
+  };
+
+  // NOWE: Jeśli jest ustawiony link z wideo - wyświetl wideo
+  if (videoUrl) {
+    return (
+      <div 
+        className="fixed inset-0 bg-[#2b2b2b] z-50 flex items-center justify-center overflow-hidden transition-opacity duration-500 ease-in-out"
+        style={{ opacity: videoOpacity }}
+      >
+        <video 
+          src={videoUrl} 
+          autoPlay 
+          muted 
+          playsInline 
+          onEnded={handleVideoEnd}
+          className="w-full h-full object-cover"
+        >
+          Your browser does not support the video tag.
+        </video>
+      </div>
+    )
+  }
 
   return (
     // Tło z Twoim kolorem ze Swifta: #2b2b2b
@@ -60,7 +97,7 @@ export default function SplashView({ onFinish }) {
         className="transition-transform duration-500 ease-in-out flex flex-col items-center justify-center w-full"
         style={{ transform: `scale(${finalScale})` }}
       >
-        {/* LOGO - animacja CSS (opisana w kroku 2) + Twój plik z folderu public */}
+        {/* LOGO - animacja CSS + Twój plik z folderu public */}
         <img 
           src="/icon.png" 
           alt="App Logo" 
