@@ -39,7 +39,7 @@ export default function ScheduleView({ onBack }) {
   const { 
     subjects, scheduleEntries, exams, customEvents, cancellations, 
     semesters, eventLists, deleteExam, deleteCustomEvent,
-    scheduleNotes, saveScheduleNote 
+    scheduleNotes, saveScheduleNote, cancelClass 
   } = useData();
 
   const [currentWeekMonday, setCurrentWeekMonday] = useState(() => getMonday(new Date()));
@@ -373,7 +373,15 @@ export default function ScheduleView({ onBack }) {
       items = [
         { label: "Add / Edit Note", action: () => handleOpenNote(block) }, 
         { label: `Edit: ${block.rawData.subject.name}`, action: () => { setFormInitialData(block.rawData.subject); setShowSubjectForm(true); } },
-        { label: "Cancel class (this week only)", action: () => alert("Cancel Class Placeholder"), destructive: true }
+        { 
+          label: "Cancel class (this week only)", 
+          action: () => {
+            if(window.confirm(`Cancel class for ${block.rawData.dateStr}?`)) {
+              cancelClass(block.rawData.entry.id, block.rawData.dateStr);
+            }
+          }, 
+          destructive: true 
+        } // Podmieniono placeholder na wywołanie funkcji
       ];
     } else if (block.type === 'exam') {
       items = [

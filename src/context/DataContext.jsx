@@ -154,7 +154,9 @@ export function DataProvider({ children }) {
 
   const saveFeedback = async (title, description) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser(); // Pobieramy bezpiecznie z SDK
+      // Tu zostawiamy pobieranie usera, na wypadek gdybyś wolał to kontrolować z klienta,
+      // ale jeśli masz auth.uid() ustawione dla tabeli feedback, to też możesz to pominąć.
+      const { data: { user } } = await supabase.auth.getUser(); 
       const payload = {
         user_id: user?.id,
         title: title,
@@ -231,6 +233,20 @@ export function DataProvider({ children }) {
       await fetchDashboardData();
     } catch (error) {
       console.error("Błąd zapisu notatki planu:", error);
+    }
+  };
+
+  const cancelClass = async (entryId, dateStr) => {
+    try {
+      const payload = {
+        id: generateId('cancel'),
+        entry_id: entryId,
+        date: dateStr
+      };
+      await supabase.from('schedule_cancellations').insert([payload]);
+      await fetchDashboardData();
+    } catch (error) {
+      console.error("Błąd odwoływania zajęć:", error);
     }
   };
 
@@ -843,7 +859,7 @@ export function DataProvider({ children }) {
       deleteSubject, saveSemester, deleteSemester, setCurrentSemester,
       saveGradeModule, deleteGradeModule, saveGrade, deleteGrade, updateGradePoints,
       saveSubscription, deleteSubscription,
-      saveScheduleNote, saveBlockedDates
+      saveScheduleNote, saveBlockedDates, cancelClass
     }}>
       {children}
       <GlobalPopups popupData={popupQueue[0]} onClose={() => setPopupQueue(prev => prev.slice(1))} />
