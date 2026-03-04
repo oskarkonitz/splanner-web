@@ -30,6 +30,7 @@ export function DataProvider({ children }) {
   const [grades, setGrades] = useState([]);
   const [blockedDates, setBlockedDates] = useState([]); 
   const [subscriptions, setSubscriptions] = useState([]); 
+  const [subjectNotes, setSubjectNotes] = useState([]); // NOWY STAN DLA NOTATNIKÓW Z MINECRAFTA
   
   const [achievements, setAchievements] = useState([]); 
   const [popupQueue, setPopupQueue] = useState([]); 
@@ -56,7 +57,8 @@ export function DataProvider({ children }) {
         gradeModulesRes, gradesRes, blockedRes, subscriptionsRes,
         achievementsRes,
         appConfigRes, adminsRes,
-        feedbackRes
+        feedbackRes,
+        subjectNotesRes // NOWE ZAPYTANIE DO BAZY
       ] = await Promise.all([
         supabase.from('daily_tasks').select('*'),
         supabase.from('task_lists').select('*'),
@@ -78,7 +80,8 @@ export function DataProvider({ children }) {
         supabase.from('achievements').select('*'),
         supabase.from('app_config').select('*'), 
         supabase.from('admins').select('user_id'),
-        supabase.from('feedback').select('*').order('created_at', { ascending: false })
+        supabase.from('feedback').select('*').order('created_at', { ascending: false }),
+        supabase.from('subject_notes').select('*') // POBIERAMY NOTATNIKI PRZEDMIOTÓW
       ]);
 
       if (tasksRes.data) setDailyTasks(tasksRes.data);
@@ -106,6 +109,7 @@ export function DataProvider({ children }) {
       if (semestersRes.data) setSemesters(semestersRes.data);
       if (gradeModulesRes.data) setGradeModules(gradeModulesRes.data);
       if (subscriptionsRes.data) setSubscriptions(subscriptionsRes.data);
+      if (subjectNotesRes.data) setSubjectNotes(subjectNotesRes.data); // ZAPISUJEMY W STANIE
       
       if (achievementsRes.data) {
         setAchievements(achievementsRes.data.map(a => a.achievement_id));
@@ -724,6 +728,35 @@ export function DataProvider({ children }) {
     } catch (error) { console.error("Błąd usuwania subskrypcji:", error); }
   };
 
+  // NOWA FUNKCJA DO ZAPISYWANIA NOTATEK MINECRAFTOWYCH
+  const saveSubjectNote = async (subjectId, dataObj, lastOpenedPage) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      const payload = {
+        subject_id: subjectId,
+        user_id: user?.id,
+        data: dataObj,
+        last_opened_page: lastOpenedPage,
+        updated_at: new Date().toISOString()
+      };
+
+      // Sprawdzamy, czy istnieje już notatnik dla tego przedmiotu
+      const existing = subjectNotes.find(n => n.subject_id === subjectId);
+
+      if (existing) {
+        await supabase.from('subject_notes').update(payload).eq('id', existing.id);
+      } else {
+        await supabase.from('subject_notes').insert([payload]);
+      }
+
+      await fetchDashboardData(); // Odświeża stan
+    } catch (error) {
+      console.error("Błąd zapisywania notatnika przedmiotu:", error);
+    }
+  };
+
+
   const runPlanner = async (onlyUnscheduled = false) => {
     const today = new Date();
     today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
@@ -848,7 +881,7 @@ export function DataProvider({ children }) {
       subjects, scheduleEntries, cancellations, scheduleNotes,
       customEvents, eventLists, semesters, gradeModules, grades,
       blockedDates,
-      subscriptions, achievements, 
+      subscriptions, achievements, subjectNotes, // UDOSTĘPNIAMY STAN NOTATNIKÓW
       settings,
       appConfig, isAdmin, updateAppConfig, 
       feedback, saveFeedback, replyToFeedback,
@@ -859,7 +892,7 @@ export function DataProvider({ children }) {
       deleteSubject, saveSemester, deleteSemester, setCurrentSemester,
       saveGradeModule, deleteGradeModule, saveGrade, deleteGrade, updateGradePoints,
       saveSubscription, deleteSubscription,
-      saveScheduleNote, saveBlockedDates, cancelClass
+      saveScheduleNote, saveBlockedDates, cancelClass, saveSubjectNote // UDOSTĘPNIAMY FUNKCJĘ ZAPISU
     }}>
       {children}
       <GlobalPopups popupData={popupQueue[0]} onClose={() => setPopupQueue(prev => prev.slice(1))} />

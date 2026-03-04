@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import SubjectFormModal from '../components/SubjectFormModal';
 import SemesterFormModal from '../components/SemesterFormModal';
+import MinecraftNotebook from '../components/MinecraftNotebook';
 
 export default function SubjectsView({ onBack }) {
   const { 
@@ -19,6 +20,9 @@ export default function SubjectsView({ onBack }) {
   const [subjectToEdit, setSubjectToEdit] = useState(null);
   const [showSemesterForm, setShowSemesterForm] = useState(false);
   const [semesterToEdit, setSemesterToEdit] = useState(null);
+  
+  // STAN DLA NOTATNIKA MINECRAFTOWEGO
+  const [notebookSubject, setNotebookSubject] = useState(null);
 
   // MENU KONTEKSTOWE
   const [contextMenu, setContextMenu] = useState(null); // { x, y, type: 'subject' | 'semester', item }
@@ -229,7 +233,24 @@ export default function SubjectsView({ onBack }) {
                             {sub.weight} ECTS
                           </div>
                           
-                          <button className="hidden md:block p-1 text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {/* Przycisk Notatnika */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setNotebookSubject(sub);
+                            }}
+                            className="p-2 text-yellow-500 hover:text-yellow-400 bg-yellow-500/10 hover:bg-yellow-500/20 rounded-lg transition-colors border border-yellow-500/20"
+                            title="Open Notebook"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+                            </svg>
+                          </button>
+
+                          <button 
+                            className="hidden md:block p-1 text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={(e) => handleContextMenu(e, sub, 'subject')}
+                          >
                             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
                           </button>
                         </div>
@@ -291,6 +312,13 @@ export default function SubjectsView({ onBack }) {
         isOpen={showSubjectForm} 
         initialData={subjectToEdit} 
         onClose={() => setShowSubjectForm(false)} 
+      />
+
+      {/* MODAL NOTATNIKA MINECRAFTOWEGO */}
+      <MinecraftNotebook 
+        isOpen={!!notebookSubject} 
+        onClose={() => setNotebookSubject(null)} 
+        subject={notebookSubject} 
       />
 
     </div>

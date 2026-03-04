@@ -13,6 +13,7 @@ import SubscriptionsView from './SubscriptionsView'
 import AchievementsView from './AchievementsView'
 import AdminPanelView from './AdminPanelView'
 import FeedbackView from './FeedbackView'
+import MinecraftNotebook from '../components/MinecraftNotebook' // DODANO IMPORT NOTATNIKA
 
 // --- FUNKCJE POMOCNICZE DLA SUBSKRYPCJI ---
 const getNextBillingDate = (billingDateStr, cycle) => {
@@ -75,6 +76,9 @@ export default function HomeView() {
   // --- STANY DLA POWIADOMIENIA WINDOWS ---
   const [showWindowsToast, setShowWindowsToast] = useState(false);
   const [isWindows, setIsWindows] = useState(false);
+
+  // --- STAN DLA NOTATNIKA ---
+  const [notebookSubject, setNotebookSubject] = useState(null);
 
   // --- STANY I LOGIKA DLA SLIDERA "LATER TODAY" ---
   const [laterTodayIndex, setLaterTodayIndex] = useState(0);
@@ -232,7 +236,8 @@ export default function HomeView() {
         dailyItems.push({ 
           title: subject.name, subtitle: roomStr, 
           startTime: entry.start_time, endTime: entry.end_time, 
-          typeStr, hexColor: subject.color || "#3498db", dateStr: checkDateStr 
+          typeStr, hexColor: subject.color || "#3498db", dateStr: checkDateStr,
+          subject: subject // DODANE - przekazujemy obiekt przedmiotu dla ikony notatnika
         });
       }
       
@@ -273,7 +278,8 @@ export default function HomeView() {
         dailyItems.push({ 
           title: event.title, subtitle: "", 
           startTime: effectiveStart, endTime: effectiveEnd, 
-          typeStr: listName, hexColor: event.color || "#3498db", dateStr: checkDateStr 
+          typeStr: listName, hexColor: event.color || "#3498db", dateStr: checkDateStr,
+          subject: null // Brak przedmiotu, to event
         });
       }
       
@@ -759,10 +765,29 @@ export default function HomeView() {
                   <span className="text-xs font-bold uppercase tracking-wider" style={{ color: nowNextItem.hexColor }}>
                     {isNow ? "Now" : "Next"}
                   </span>
-                  <span className="text-xs px-2 py-1 rounded-md font-medium" style={{ backgroundColor: `${nowNextItem.hexColor}20`, color: nowNextItem.hexColor }}>
-                    {countdownStr}
-                  </span>
+                  
+                  {/* PRZYCISKI W PRAWYM GÓRNYM ROGU (NOTATNIK + ODLICZANIE) */}
+                  <div className="flex items-center gap-2">
+                    {nowNextItem.subject && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setNotebookSubject(nowNextItem.subject);
+                        }}
+                        className="p-1.5 text-yellow-500 hover:text-yellow-400 bg-yellow-500/10 hover:bg-yellow-500/20 rounded-lg transition-colors border border-yellow-500/20"
+                        title="Open Notebook"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+                        </svg>
+                      </button>
+                    )}
+                    <span className="text-xs px-2 py-1 rounded-md font-medium" style={{ backgroundColor: `${nowNextItem.hexColor}20`, color: nowNextItem.hexColor }}>
+                      {countdownStr}
+                    </span>
+                  </div>
                 </div>
+                
                 <div className="flex-1 flex flex-col justify-center">
                   <span className="text-xl font-bold text-white truncate">{nowNextItem.title}</span>
                   <div className="flex items-center gap-2 text-gray-400 text-sm mt-1">
@@ -774,7 +799,7 @@ export default function HomeView() {
                   </span>
                 </div>
                 
-                {/* ZAPLANOWANE NA DZISIAJ - Z ANIMOWANYM SLIDEREM CSS (Z dołu do góry) */}
+                {/* ZAPLANOWANE NA DZISIAJ - Z ANIMOWANYM SLIDEREM CSS */}
                 {isToday && upcomingToday.length > 1 && (
                   <div className="mt-2 pt-3 border-t border-white/10 flex flex-col gap-2">
                     <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Later Today</span>
@@ -793,12 +818,9 @@ export default function HomeView() {
                           let offset = i - laterTodayIndex;
                           const len = displayLaterItems.length;
                           
-                          // Znormalizuj offset dla gładkiego przeskoku karuzeli
                           while (offset < -Math.floor(len/2)) offset += len;
                           while (offset > Math.floor((len-1)/2)) offset -= len;
                           
-                          // Dla przesunięcia z dołu do góry, offset jest dodatni gdy karta jest PONIŻEJ.
-                          // Zatem jeśli offset >= 1, element znajduje się pod spodem lub właśnie tam wskoczył.
                           const isJumping = offset < -1 || offset >= 1; 
                           const translateY = `${offset * 100}%`;
                           
@@ -902,9 +924,9 @@ export default function HomeView() {
                 <>
                   <div className="flex flex-col gap-2 pb-2">
                     {todayTasksList.map(t => (
-                      <div key={t.id} className="flex items-center gap-2 text-sm truncate shrink-0">
-                        <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: t.color }}></div>
-                        <span className="text-gray-200 truncate">{t.title}</span>
+                      <div key={t.id} className="flex items-start gap-2 text-sm shrink-0 w-full">
+                        <div className="w-1.5 h-1.5 rounded-full shrink-0 mt-1.5" style={{ backgroundColor: t.color }}></div>
+                        <span className="text-gray-200 break-words whitespace-normal leading-tight flex-1">{t.title}</span>
                       </div>
                     ))}
                   </div>
@@ -912,9 +934,9 @@ export default function HomeView() {
                   {tasksNeedScroll && (
                     <div className="flex flex-col gap-2 pb-2">
                       {todayTasksList.map(t => (
-                        <div key={`dup-${t.id}`} className="flex items-center gap-2 text-sm truncate shrink-0">
-                          <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: t.color }}></div>
-                          <span className="text-gray-200 truncate">{t.title}</span>
+                        <div key={`dup-${t.id}`} className="flex items-start gap-2 text-sm shrink-0 w-full">
+                          <div className="w-1.5 h-1.5 rounded-full shrink-0 mt-1.5" style={{ backgroundColor: t.color }}></div>
+                          <span className="text-gray-200 break-words whitespace-normal leading-tight flex-1">{t.title}</span>
                         </div>
                       ))}
                     </div>
@@ -958,9 +980,9 @@ export default function HomeView() {
                   {/* Główna lista zakupów */}
                   <div className="flex flex-col gap-2 pb-2">
                     {shoppingItemsList.map(item => (
-                      <div key={item.id} className="flex items-center gap-2 text-sm truncate shrink-0">
-                        <span className="text-orange-400 shrink-0 text-xs">•</span>
-                        <span className="text-gray-200 truncate">{item.name}</span>
+                      <div key={item.id} className="flex items-start gap-2 text-sm shrink-0 w-full">
+                        <span className="text-orange-400 shrink-0 text-xs mt-0.5">•</span>
+                        <span className="text-gray-200 break-words whitespace-normal leading-tight flex-1">{item.name}</span>
                       </div>
                     ))}
                   </div>
@@ -968,9 +990,9 @@ export default function HomeView() {
                   {shoppingNeedScroll && (
                     <div className="flex flex-col gap-2 pb-2">
                       {shoppingItemsList.map(item => (
-                        <div key={`dup-${item.id}`} className="flex items-center gap-2 text-sm truncate shrink-0">
-                          <span className="text-orange-400 shrink-0 text-xs">•</span>
-                          <span className="text-gray-200 truncate">{item.name}</span>
+                        <div key={`dup-${item.id}`} className="flex items-start gap-2 text-sm shrink-0 w-full">
+                          <span className="text-orange-400 shrink-0 text-xs mt-0.5">•</span>
+                          <span className="text-gray-200 break-words whitespace-normal leading-tight flex-1">{item.name}</span>
                         </div>
                       ))}
                     </div>
@@ -1175,10 +1197,10 @@ export default function HomeView() {
           <SubscriptionsView onBack={() => setActiveTab("More")} />
         ) : activeTab === "Achievements" ? (
           <AchievementsView onBack={() => setActiveTab("More")} />
-        ) : activeTab === "Admin" ? (                                     
-          <AdminPanelView onBack={() => setActiveTab("Dashboard")} />     
-        ) : activeTab === "Feedback" ? (                                     
-          <FeedbackView onBack={() => setActiveTab("Dashboard")} />     
+        ) : activeTab === "Admin" ? (                                    
+          <AdminPanelView onBack={() => setActiveTab("Dashboard")} />    
+        ) : activeTab === "Feedback" ? (                                    
+          <FeedbackView onBack={() => setActiveTab("Dashboard")} />    
         ) : (
           <main className="flex-1 overflow-y-auto px-6 pb-24 md:p-10 pt-[calc(env(safe-area-inset-top)+1.5rem)]">
             
@@ -1228,13 +1250,13 @@ export default function HomeView() {
                       className="bg-[#1c1c1e] p-4 rounded-2xl flex justify-between items-center active:scale-95 transition-transform"
                     >
                       <span className="font-medium text-gray-200">{item}</span>
-                      <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
                     </button>
                   ))}
                 </div>
                 
                 {/* PRZYCISK FEEDBACKU W MENU "MORE" NA MOBILE */}
-                <div className="mt-auto md:hidden pt-4 border-t border-gray-800 pb-2">
+                <div className="mt-auto md:hidden pt-4 border-t border-gray-800 pb-20 mb-4">
                   <button 
                     onClick={() => setActiveTab("Feedback")}
                     className="w-full flex justify-center items-center gap-2 p-4 rounded-2xl bg-[#1c1c1e]/50 text-gray-400 border border-dashed border-gray-700 active:scale-95 transition-transform"
@@ -1338,6 +1360,14 @@ export default function HomeView() {
           </div>
         </nav>
       </div>
+
+      {/* --- MODAL NOTATNIKA --- */}
+      <MinecraftNotebook 
+        isOpen={!!notebookSubject} 
+        onClose={() => setNotebookSubject(null)} 
+        subject={notebookSubject} 
+      />
+
     </div>
   )
 }

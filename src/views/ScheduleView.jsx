@@ -4,6 +4,7 @@ import ExamFormModal from '../components/ExamFormModal'
 import EventFormModal from '../components/EventFormModal'
 import SubjectFormModal from '../components/SubjectFormModal'
 import NoteEditorModal from '../components/NoteEditorModal' 
+import MinecraftNotebook from '../components/MinecraftNotebook' // DODANO IMPORT NOTATNIKA
 
 const START_HOUR = 0;
 const END_HOUR = 24;
@@ -57,6 +58,9 @@ export default function ScheduleView({ onBack }) {
   const [formInitialData, setFormInitialData] = useState(null);
   
   const [noteModalData, setNoteModalData] = useState(null);
+
+  // --- STAN DLA NOTATNIKA ---
+  const [notebookSubject, setNotebookSubject] = useState(null);
 
   const scrollRef = useRef(null);
 
@@ -371,6 +375,7 @@ export default function ScheduleView({ onBack }) {
     let items = [];
     if (block.type === 'class') {
       items = [
+        { label: "Open Notebook", action: () => setNotebookSubject(block.rawData.subject) }, // DODANE
         { label: "Add / Edit Note", action: () => handleOpenNote(block) }, 
         { label: `Edit: ${block.rawData.subject.name}`, action: () => { setFormInitialData(block.rawData.subject); setShowSubjectForm(true); } },
         { 
@@ -381,7 +386,7 @@ export default function ScheduleView({ onBack }) {
             }
           }, 
           destructive: true 
-        } // Podmieniono placeholder na wywołanie funkcji
+        } 
       ];
     } else if (block.type === 'exam') {
       items = [
@@ -768,6 +773,13 @@ export default function ScheduleView({ onBack }) {
         title={noteModalData?.title}
         onClose={() => setNoteModalData(null)}
         onSave={onSaveNote}
+      />
+
+      {/* --- MODAL NOTATNIKA MINECRAFTOWEGO --- */}
+      <MinecraftNotebook 
+        isOpen={!!notebookSubject} 
+        onClose={() => setNotebookSubject(null)} 
+        subject={notebookSubject} 
       />
 
     </div>
