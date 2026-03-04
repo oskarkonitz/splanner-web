@@ -8,7 +8,7 @@ export default function SplashView({ onFinish, videoUrl }) {
   const [finalScale, setFinalScale] = useState(1)
   const [finalOpacity, setFinalOpacity] = useState(1)
   
-  // NOWE: Stan do płynnego znikania wideo
+  // Stan do płynnego znikania wideo
   const [videoOpacity, setVideoOpacity] = useState(1)
 
   useEffect(() => {
@@ -55,7 +55,7 @@ export default function SplashView({ onFinish, videoUrl }) {
     }, 3100)
   }, [onFinish, videoUrl])
 
-  // NOWE: Funkcja obsługująca koniec filmu z płynnym przejściem
+  // Funkcja obsługująca koniec filmu (lub pominięcie) z płynnym przejściem
   const handleVideoEnd = () => {
     setVideoOpacity(0); // Zmieniamy krycie na 0, odpala się animacja CSS
     
@@ -65,7 +65,7 @@ export default function SplashView({ onFinish, videoUrl }) {
     }, 500);
   };
 
-  // NOWE: Jeśli jest ustawiony link z wideo - wyświetl wideo
+  // Jeśli jest ustawiony link z wideo - wyświetl wideo
   if (videoUrl) {
     return (
       <div 
@@ -82,6 +82,14 @@ export default function SplashView({ onFinish, videoUrl }) {
         >
           Your browser does not support the video tag.
         </video>
+
+        {/* NOWE: Elegancki przycisk Skip w prawym dolnym rogu */}
+        <button 
+          onClick={handleVideoEnd}
+          className="absolute bottom-8 right-8 z-10 bg-black/40 hover:bg-black/60 text-white/80 hover:text-white px-5 py-2.5 rounded-full text-sm font-medium backdrop-blur-md transition-all border border-white/10 shadow-lg"
+        >
+          Skip
+        </button>
       </div>
     )
   }
