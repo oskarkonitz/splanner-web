@@ -15,6 +15,21 @@ export default function SettingsView({ onBack }) {
   const [passwordMessage, setPasswordMessage] = useState({ type: '', text: '' })
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false)
 
+  // Stany dla konfiguracji Dashboardu
+  const [localDashboardLayout, setLocalDashboardLayout] = useState(null)
+  const [layoutTab, setLayoutTab] = useState('desktop') // 'desktop' lub 'mobile'
+
+  const dashboardWidgetsList = [
+    { id: 'progress', label: 'Progress Summary (Bars)' },
+    { id: 'now_next', label: 'Now / Next Events' },
+    { id: 'next_exam', label: 'Next Exam' },
+    { id: 'tasks', label: 'Tasks for Today' },
+    { id: 'shopping', label: 'Shopping List' },
+    { id: 'next_payment', label: 'Next Payment' },
+    { id: 'focus', label: 'Today\'s Focus Time' },
+    { id: 'gpa', label: 'Current GPA' }
+  ];
+
   // Sprawdzanie systemu po załadowaniu komponentu
   useEffect(() => {
     const checkIsWindows = /Win/i.test(navigator.userAgent);
@@ -92,6 +107,11 @@ export default function SettingsView({ onBack }) {
     setActiveModal(null);
   };
 
+  const handleSaveDashboardLayout = async () => {
+    await updateSetting('dashboard_layout', localDashboardLayout);
+    setActiveModal(null);
+  };
+
   const handleChangePassword = async (e) => {
     e.preventDefault();
     setIsUpdatingPassword(true);
@@ -133,6 +153,19 @@ export default function SettingsView({ onBack }) {
       <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-8 max-w-3xl mx-auto w-full">
         
         <Section title="Preferences">
+          <Row 
+            title="Customize Dashboard" 
+            hasArrow 
+            onClick={() => {
+              const defaultLayout = {
+                desktop: { progress: true, now_next: true, next_exam: true, tasks: true, shopping: true, next_payment: true, focus: true, gpa: true },
+                mobile: { progress: true, now_next: true, next_exam: true, tasks: true, shopping: true, next_payment: true, focus: true, gpa: true }
+              };
+              setLocalDashboardLayout(settings?.dashboard_layout || defaultLayout);
+              setLayoutTab('desktop');
+              setActiveModal('dashboardLayout');
+            }} 
+          />
           <Row title="Tasks Shortcuts" hasArrow onClick={() => setActiveModal('shortcuts')} />
           <Row 
             title="Main Shopping List" 
@@ -196,8 +229,72 @@ export default function SettingsView({ onBack }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-opacity">
           <div className="absolute inset-0" onClick={() => setActiveModal(null)}></div>
 
-          <div className="relative bg-[#1c1c1e] p-6 rounded-3xl shadow-2xl border border-white/10 w-full max-w-sm flex flex-col gap-6 animate-in fade-in zoom-in-95 duration-200">
+          <div className="relative bg-[#1c1c1e] p-6 rounded-3xl shadow-2xl border border-white/10 w-full max-w-sm flex flex-col gap-6 animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
             
+            {activeModal === 'dashboardLayout' && localDashboardLayout && (
+              <>
+                <div className="text-center mb-2">
+                  <h3 className="text-xl font-bold">Customize Dashboard</h3>
+                  <p className="text-gray-400 text-sm mt-1">Choose which widgets are visible.</p>
+                </div>
+
+                <div className="flex bg-[#2b2b2b] rounded-xl p-1 shrink-0">
+                  <button
+                    onClick={() => setLayoutTab('desktop')}
+                    className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${layoutTab === 'desktop' ? 'bg-[#3498db] text-white' : 'text-gray-400 hover:text-white'}`}
+                  >
+                    Desktop
+                  </button>
+                  <button
+                    onClick={() => setLayoutTab('mobile')}
+                    className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${layoutTab === 'mobile' ? 'bg-[#3498db] text-white' : 'text-gray-400 hover:text-white'}`}
+                  >
+                    Mobile
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-3">
+                  {dashboardWidgetsList.map(widget => {
+                    const isActive = localDashboardLayout[layoutTab][widget.id] ?? true;
+                    return (
+                      <div key={widget.id} className="flex items-center justify-between p-3 bg-[#2b2b2b] rounded-xl">
+                        <span className="text-sm font-medium text-gray-200">{widget.label}</span>
+                        <button 
+                          onClick={() => {
+                            setLocalDashboardLayout(prev => ({
+                              ...prev,
+                              [layoutTab]: {
+                                ...prev[layoutTab],
+                                [widget.id]: !isActive
+                              }
+                            }));
+                          }}
+                          className={`relative w-12 h-6 rounded-full transition-colors duration-300 ease-in-out ${isActive ? 'bg-[#3498db]' : 'bg-gray-600'}`}
+                        >
+                          <div className={`absolute left-1 top-1 w-4 h-4 rounded-full bg-white transition-transform duration-300 ease-in-out ${isActive ? 'translate-x-6' : 'translate-x-0'}`}></div>
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div className="flex flex-col gap-3 mt-2">
+                  <button 
+                    onClick={handleSaveDashboardLayout}
+                    className="w-full py-3 bg-[#3498db] hover:bg-[#2980b9] text-white rounded-xl font-bold transition-colors"
+                  >
+                    Save Changes
+                  </button>
+                  <button 
+                    onClick={() => setActiveModal(null)} 
+                    className="w-full py-3 bg-white/5 hover:bg-white/10 rounded-xl font-medium transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
+
             {activeModal === 'logout' && (
               <>
                 <div className="text-center">

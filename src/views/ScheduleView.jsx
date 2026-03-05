@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useData } from '../context/DataContext'
+import { supabase } from '../api/supabase' 
 import ExamFormModal from '../components/ExamFormModal'
 import EventFormModal from '../components/EventFormModal'
 import SubjectFormModal from '../components/SubjectFormModal'
 import NoteEditorModal from '../components/NoteEditorModal' 
-import MinecraftNotebook from '../components/MinecraftNotebook' // DODANO IMPORT NOTATNIKA
+import MinecraftNotebook from '../components/MinecraftNotebook' 
 
 const START_HOUR = 0;
 const END_HOUR = 24;
@@ -25,7 +26,6 @@ const getMonday = (d) => {
   return date;
 };
 
-// DODANE: Funkcja do sprawdzania, ile tygodni minęło między dwoma datami (żeby ustalić tydzień A/B)
 const getWeekDiff = (startDateStr, currentDateStr) => {
   if (!startDateStr || !currentDateStr) return 0;
   const start = getMonday(new Date(startDateStr));
@@ -40,7 +40,7 @@ export default function ScheduleView({ onBack }) {
   const { 
     subjects, scheduleEntries, exams, customEvents, cancellations, 
     semesters, eventLists, deleteExam, deleteCustomEvent,
-    scheduleNotes, saveScheduleNote, cancelClass 
+    scheduleNotes, saveScheduleNote, cancelClass, fetchDashboardData 
   } = useData();
 
   const [currentWeekMonday, setCurrentWeekMonday] = useState(() => getMonday(new Date()));
@@ -58,9 +58,13 @@ export default function ScheduleView({ onBack }) {
   const [formInitialData, setFormInitialData] = useState(null);
   
   const [noteModalData, setNoteModalData] = useState(null);
-
-  // --- STAN DLA NOTATNIKA ---
   const [notebookSubject, setNotebookSubject] = useState(null);
+
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [categoryForm, setCategoryForm] = useState({ id: null, name: '', color: '#3498db' });
+
+  // Stan śledzenia aktualnie najechanego kafelka
+  const [hoveredBlockId, setHoveredBlockId] = useState(null);
 
   const scrollRef = useRef(null);
 
@@ -69,6 +73,51 @@ export default function ScheduleView({ onBack }) {
     window.addEventListener('click', closeMenu);
     return () => window.removeEventListener('click', closeMenu);
   }, []);
+
+  const handleOpenCreateCategory = (e) => {
+    e.stopPropagation();
+    setCategoryForm({ id: null, name: '', color: '#3498db' });
+    setShowCategoryModal(true);
+  };
+
+  const handleOpenEditCategory = (e, lst) => {
+    e.stopPropagation();
+    setCategoryForm({ id: lst.id, name: lst.name, color: lst.color || '#3498db' });
+    setShowCategoryModal(true);
+  };
+
+  const handleSaveCategory = async () => {
+    if (!categoryForm.name.trim()) return;
+    try {
+      if (categoryForm.id) {
+        await supabase.from('event_lists')
+          .update({ name: categoryForm.name.trim(), color: categoryForm.color })
+          .eq('id', categoryForm.id);
+      } else {
+        const newId = `evl_${Math.random().toString(36).substring(2, 10)}`;
+        await supabase.from('event_lists')
+          .insert([{ id: newId, name: categoryForm.name.trim(), color: categoryForm.color }]);
+      }
+      if (fetchDashboardData) fetchDashboardData();
+      setShowCategoryModal(false);
+    } catch (error) {
+      console.error("Error saving category:", error);
+    }
+  };
+
+  const handleDeleteList = async (e, id) => {
+    e.stopPropagation();
+    if (!window.confirm("Are you sure you want to delete this category? Events linked to it will remain but lose their category assignment.")) return;
+    try {
+      await supabase.from('event_lists').delete().eq('id', id);
+      const newSelected = new Set(selectedLists);
+      newSelected.delete(id);
+      setSelectedLists(newSelected);
+      if (fetchDashboardData) fetchDashboardData();
+    } catch (error) {
+      console.error("Error deleting list:", error);
+    }
+  };
 
   const weekDates = useMemo(() => {
     const dates = [];
@@ -85,7 +134,6 @@ export default function ScheduleView({ onBack }) {
     if (!subjects) return result;
 
     const subjectsCache = subjects.reduce((acc, s) => ({ ...acc, [s.id]: s }), {});
-    // DODANE: Cache dla semestrów, by wyciągnąć ich datę startu
     const semestersCache = (semesters || []).reduce((acc, s) => ({ ...acc, [s.id]: s }), {});
     
     const weekEndStr = toDateString(weekDates[6]);
@@ -111,11 +159,9 @@ export default function ScheduleView({ onBack }) {
       if (subject.end_datetime && entryDateStr > subject.end_datetime.substring(0, 10)) return;
       if (cancels.has(`${entry.id}_${entryDateStr}`)) return;
 
-      // DODANE: Logika sprawdzania częstotliwości (A/B)
       const frequency = entry.frequency || 'weekly';
       if (frequency !== 'weekly') {
         const semester = semestersCache[subject.semester_id];
-        // Bierzemy datę startu semestru jako bazową. Jak jej nie ma, bierzemy datę startu przedmiotu.
         const anchorDate = semester?.start_date || subject.start_datetime?.substring(0, 10) || "2024-01-01";
         const weekIndex = Math.abs(getWeekDiff(anchorDate, entryDateStr));
 
@@ -123,7 +169,6 @@ export default function ScheduleView({ onBack }) {
         if (frequency === 'odd' && weekIndex % 2 === 0) return;
         if (frequency === 'every_2_weeks' && weekIndex % 2 !== 0) return; 
       }
-      // KONIEC DODANEJ LOGIKI
 
       const [sH, sM] = entry.start_time.split(':').map(Number);
       const [eH, eM] = entry.end_time.split(':').map(Number);
@@ -289,12 +334,80 @@ export default function ScheduleView({ onBack }) {
     return result;
   }, [subjects, scheduleEntries, exams, customEvents, cancellations, currentWeekMonday, weekDates, selectedSemesters, selectedLists, scheduleNotes, semesters]);
 
+  const layoutBlocks = useMemo(() => {
+    const visibleBlocks = blocks.filter(b => !b.isMerged);
+    const blocksByDay = Array.from({ length: 7 }, () => []);
+    
+    visibleBlocks.forEach(b => blocksByDay[b.dayIdx].push(b));
+
+    const processed = [];
+    let nextGroupId = 0; // Unikalne ID dla paczki kolizyjnej
+
+    blocksByDay.forEach(dayBlocks => {
+      dayBlocks.sort((a, b) => {
+        if (a.startVal !== b.startVal) return a.startVal - b.startVal;
+        return b.duration - a.duration;
+      });
+
+      let currentGroup = [];
+      let groupEnd = 0;
+
+      const processGroup = (group) => {
+        const currentGroupId = nextGroupId++;
+        const columns = [];
+        group.forEach(block => {
+          let placed = false;
+          for (const col of columns) {
+            const lastInCol = col[col.length - 1];
+            if (lastInCol.startVal + lastInCol.duration <= block.startVal) {
+              col.push(block);
+              block.colIdx = columns.indexOf(col);
+              placed = true;
+              break;
+            }
+          }
+          if (!placed) {
+            block.colIdx = columns.length;
+            columns.push([block]);
+          }
+        });
+
+        const numCols = columns.length;
+        group.forEach(block => {
+          block.colCount = numCols;
+          block.groupId = currentGroupId; 
+          processed.push(block);
+        });
+      };
+
+      dayBlocks.forEach(block => {
+        if (currentGroup.length === 0) {
+          currentGroup.push(block);
+          groupEnd = block.startVal + block.duration;
+        } else {
+          if (block.startVal < groupEnd) {
+            currentGroup.push(block);
+            groupEnd = Math.max(groupEnd, block.startVal + block.duration);
+          } else {
+            processGroup(currentGroup);
+            currentGroup = [block];
+            groupEnd = block.startVal + block.duration;
+          }
+        }
+      });
+      if (currentGroup.length > 0) {
+        processGroup(currentGroup);
+      }
+    });
+
+    return processed;
+  }, [blocks]);
+
   const agendaItems = useMemo(() => {
     const selectedDayIdx = weekDates.findIndex(d => toDateString(d) === selectedDate);
     if (selectedDayIdx === -1) return [];
     
     return blocks
-      // DODANE: Odfiltrowujemy !b.isMerged, żeby nie wyświetlać egzaminu podwójnie
       .filter(b => b.dayIdx === selectedDayIdx && !b.isMerged)
       .sort((a, b) => a.startVal - b.startVal); 
   }, [blocks, selectedDate, weekDates]);
@@ -375,7 +488,7 @@ export default function ScheduleView({ onBack }) {
     let items = [];
     if (block.type === 'class') {
       items = [
-        { label: "Open Notebook", action: () => setNotebookSubject(block.rawData.subject) }, // DODANE
+        { label: "Open Notebook", action: () => setNotebookSubject(block.rawData.subject) }, 
         { label: "Add / Edit Note", action: () => handleOpenNote(block) }, 
         { label: `Edit: ${block.rawData.subject.name}`, action: () => { setFormInitialData(block.rawData.subject); setShowSubjectForm(true); } },
         { 
@@ -418,7 +531,7 @@ export default function ScheduleView({ onBack }) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#2b2b2b] text-white">
+    <div className="flex flex-col h-full bg-[#2b2b2b] text-white relative">
       
       <header className="flex flex-wrap items-center justify-between p-4 pt-[calc(env(safe-area-inset-top)+1rem)] border-b border-gray-800 gap-2 sm:gap-4 shrink-0">
         <div className="flex items-center gap-2 sm:gap-4 min-w-0">
@@ -441,12 +554,39 @@ export default function ScheduleView({ onBack }) {
                     <span className="text-sm">{sem.name}</span>
                   </label>
                 ))}
-                <div className="text-xs font-bold text-gray-500 mt-4 mb-2 px-2 uppercase tracking-wider">Categories (Lists)</div>
+                
+                <div className="flex items-center justify-between px-2 mt-4 mb-2">
+                  <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">Categories (Lists)</div>
+                  <button onClick={handleOpenCreateCategory} className="text-[#3498db] hover:text-white p-1 rounded transition-colors" title="Create new category">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
+                  </button>
+                </div>
                 {eventLists?.map(lst => (
-                  <label key={lst.id} className="flex items-center gap-3 px-2 py-2 hover:bg-white/5 rounded-lg cursor-pointer">
-                    <input type="checkbox" className="accent-[#3498db]" checked={selectedLists.has(lst.id)} onChange={() => setSelectedLists(toggleFilter(selectedLists, lst.id))} />
-                    <span className="text-sm">{lst.name}</span>
-                  </label>
+                  <div key={lst.id} className="flex items-center justify-between px-2 py-1.5 hover:bg-white/5 rounded-lg group">
+                    <label className="flex items-center gap-3 cursor-pointer flex-1">
+                      <input type="checkbox" className="accent-[#3498db]" checked={selectedLists.has(lst.id)} onChange={() => setSelectedLists(toggleFilter(selectedLists, lst.id))} />
+                      <div className="flex items-center gap-2">
+                        {lst.color && <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: lst.color }}></div>}
+                        <span className="text-sm">{lst.name}</span>
+                      </div>
+                    </label>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button 
+                        onClick={(e) => handleOpenEditCategory(e, lst)} 
+                        className="text-gray-500 hover:text-[#3498db] p-1"
+                        title="Edit category"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                      </button>
+                      <button 
+                        onClick={(e) => handleDeleteList(e, lst.id)} 
+                        className="text-gray-500 hover:text-red-500 p-1"
+                        title="Delete category"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                      </button>
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
@@ -562,7 +702,6 @@ export default function ScheduleView({ onBack }) {
                       </div>
                     )}
 
-                    {/* DODANE: Wyświetlanie egzaminu na telefonach wewnątrz kafelka przedmiotu */}
                     {block.associatedExam && (
                       <div 
                         className="mt-2 p-2 bg-[#e74c3c]/10 border border-[#e74c3c]/30 rounded-lg cursor-pointer active:bg-[#e74c3c]/20 transition-colors"
@@ -622,95 +761,141 @@ export default function ScheduleView({ onBack }) {
                 <div key={i} className="flex-1 border-l border-gray-100 dark:border-gray-800/50 relative"></div>
               ))}
 
-              {blocks.filter(b => !b.isMerged).map(block => {
-                const top = (block.startVal - START_HOUR) * PX_PER_HOUR;
-                let height = block.duration * PX_PER_HOUR;
-                let topOffset = 0;
+              {(() => {
+                // Znajdź informacje o grupie kafelka, na który aktualnie najeżdżamy myszką
+                const hoveredBlockObj = layoutBlocks.find(b => b.id === hoveredBlockId);
+                const hoveredGroupId = hoveredBlockObj ? hoveredBlockObj.groupId : null;
+                const hoveredColIdx = hoveredBlockObj ? hoveredBlockObj.colIdx : null;
 
-                if (block.isCutTop) { topOffset = -6; height += 6; }
-                if (block.isCutBottom) height += 30;
+                return layoutBlocks.map(block => {
+                  const top = (block.startVal - START_HOUR) * PX_PER_HOUR;
+                  let height = block.duration * PX_PER_HOUR;
+                  let topOffset = 0;
 
-                return (
-                  <div
-                    key={block.id}
-                    onClick={(e) => handleBlockClick(e, block)}
-                    className="absolute cursor-pointer overflow-hidden transition-transform hover:scale-[1.02] shadow-sm hover:shadow-md z-10 group"
-                    style={{
-                      left: `${(block.dayIdx / 7) * 100}%`,
-                      width: `${100 / 7}%`,
-                      top: top + topOffset,
-                      height: height,
-                      padding: '1px 2px'
-                    }}
-                  >
-                    <div 
-                      className="w-full h-full rounded-md border-l-4 flex flex-col p-1.5 opacity-90 group-hover:opacity-100 relative"
+                  if (block.isCutTop) { topOffset = -6; height += 6; }
+                  if (block.isCutBottom) height += 30;
+
+                  const isHovered = hoveredBlockId === block.id;
+                  const isOverlapping = block.colCount > 1;
+                  const isGroupHovered = isOverlapping && hoveredGroupId === block.groupId;
+
+                  // BAZOWE (RÓWNE) SZEROKOŚCI, KIEDY MYSZKA NIE JEST NAD ZADNYM Z KAFELKÓW W GRUPIE
+                  let colWidthPct = 100 / block.colCount;
+                  let colLeftPct = (block.colIdx / block.colCount) * 100;
+
+                  // MATEMATYKA DLA 95% / 5% ROZSZERZANIA
+                  if (isGroupHovered) {
+                    const totalBlocksInGroup = block.colCount;
+                    const hIndex = hoveredColIdx; // indeks najechanego kafelka (0, 1, 2...)
+                    const remainingSpacePerBlock = 5 / (totalBlocksInGroup - 1); // np. 5% dzieli się na resztę
+
+                    if (block.colIdx < hIndex) {
+                      // Kafelki po lewej stronie najechanego
+                      colWidthPct = remainingSpacePerBlock;
+                      colLeftPct = block.colIdx * remainingSpacePerBlock;
+                    } else if (block.colIdx === hIndex) {
+                      // Akurat najeżdżany kafelek
+                      colWidthPct = 95;
+                      colLeftPct = hIndex * remainingSpacePerBlock;
+                    } else {
+                      // Kafelki po prawej stronie najechanego
+                      colWidthPct = remainingSpacePerBlock;
+                      colLeftPct = 95 + (block.colIdx - 1) * remainingSpacePerBlock;
+                    }
+                  }
+
+                  // Konwersja wymiarów kolumny dnia na wielką siatkę całego tygodnia
+                  const finalWidthPct = (colWidthPct / 100) * (100 / 7);
+                  const finalLeftPct = (block.dayIdx / 7) * 100 + (colLeftPct / 100) * (100 / 7);
+                  
+                  // Najeżdżany kafelek musi wyskoczyć "na wierzch" (z-index)
+                  const finalZIndex = isHovered ? 40 : (isGroupHovered ? 30 : 10);
+
+                  return (
+                    <div
+                      key={block.id}
+                      onClick={(e) => handleBlockClick(e, block)}
+                      onMouseEnter={() => setHoveredBlockId(block.id)}
+                      onMouseLeave={() => setHoveredBlockId(null)}
+                      className="absolute cursor-pointer group shadow-sm hover:shadow-xl transition-all duration-300 ease-in-out"
                       style={{
-                        backgroundColor: `${block.color}40`, 
-                        borderColor: block.color,
-                        borderTopLeftRadius: block.isCutTop ? '0' : undefined,
-                        borderTopRightRadius: block.isCutTop ? '0' : undefined,
-                        borderBottomLeftRadius: block.isCutBottom ? '0' : undefined,
-                        borderBottomRightRadius: block.isCutBottom ? '0' : undefined,
+                        left: `${finalLeftPct}%`,
+                        width: `${finalWidthPct}%`,
+                        top: top + topOffset,
+                        height: height,
+                        padding: '1px 2px',
+                        zIndex: finalZIndex
                       }}
                     >
-                      <div className="flex justify-between items-start">
-                        <span className="text-[10px] font-bold text-gray-900 dark:text-white leading-tight mb-0.5 line-clamp-2">{block.title}</span>
+                      <div 
+                        className="w-full h-full rounded-md border-l-4 flex flex-col p-1.5 relative bg-[#1c1c1e] overflow-hidden"
+                        style={{
+                          backgroundColor: `${block.color}40`, 
+                          borderColor: block.color,
+                          borderTopLeftRadius: block.isCutTop ? '0' : undefined,
+                          borderTopRightRadius: block.isCutTop ? '0' : undefined,
+                          borderBottomLeftRadius: block.isCutBottom ? '0' : undefined,
+                          borderBottomRightRadius: block.isCutBottom ? '0' : undefined,
+                        }}
+                      >
+                        <div className="flex justify-between items-start">
+                          <span className="text-[10px] font-bold text-gray-900 dark:text-white leading-tight mb-0.5 whitespace-nowrap overflow-hidden text-ellipsis">{block.title}</span>
+                        </div>
+
+                        <span className="text-[9px] font-medium text-gray-800 dark:text-gray-300 leading-tight whitespace-nowrap overflow-hidden text-ellipsis">{block.timeStr.replace(/\n/g, '')}</span>
+                        {block.subtitle && <span className="text-[9px] text-gray-700 dark:text-gray-400 truncate mt-0.5">{block.subtitle}</span>}
+                        
+                        {block.note && (
+                          <div className="absolute inset-0 z-20 pointer-events-none group/note">
+                            <div 
+                              onClick={(e) => { e.stopPropagation(); handleOpenNote(block); }}
+                              className="absolute bottom-1 right-1 w-5 h-5 bg-[#f1c40f] rounded border border-white flex items-center justify-center shadow-md transition-all duration-300 ease-in-out cursor-pointer pointer-events-auto group-hover/note:opacity-0 group-hover/note:scale-50"
+                            >
+                              <svg className="w-3 h-3 text-black" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/>
+                              </svg>
+                            </div>
+
+                            <div 
+                              onClick={(e) => { e.stopPropagation(); handleOpenNote(block); }}
+                              className="absolute bottom-1 right-1 w-5 h-5 opacity-0 rounded-md border-l-4 border-yellow-600 bg-[#f1c40f] shadow-lg flex flex-col overflow-hidden pointer-events-none transition-all duration-300 ease-out group-hover/note:bottom-0 group-hover/note:right-0 group-hover/note:w-full group-hover/note:h-full group-hover/note:opacity-100 group-hover/note:pointer-events-auto p-1.5"
+                            >
+                              <div className="w-full h-full flex flex-col">
+                                <span className="text-[10px] font-bold text-black mb-1 shrink-0">Note:</span>
+                                <span className="text-[9px] font-medium text-black/80 leading-tight whitespace-pre-line italic overflow-y-auto pr-1 scrollbar-hide">
+                                  {block.note}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {block.associatedExam && (
+                          <div className="absolute inset-0 z-20 pointer-events-none group/exam">
+                            <div 
+                              onClick={(e) => handleBlockClick(e, block.associatedExam)}
+                              className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded border border-white flex items-center justify-center shadow-md transition-all duration-300 ease-in-out cursor-pointer pointer-events-auto group-hover/exam:opacity-0 group-hover/exam:scale-50"
+                            >
+                              <span className="text-white font-bold text-xs">!</span>
+                            </div>
+
+                            <div 
+                              onClick={(e) => handleBlockClick(e, block.associatedExam)}
+                              className="absolute top-1 right-1 w-5 h-5 opacity-0 rounded-md border-l-4 border-red-700 bg-[#e74c3c] shadow-lg flex flex-col overflow-hidden pointer-events-none transition-all duration-300 ease-out group-hover/exam:top-0 group-hover/exam:right-0 group-hover/exam:w-full group-hover/exam:h-full group-hover/exam:opacity-100 group-hover/exam:pointer-events-auto p-1.5"
+                            >
+                              <div className="w-max min-w-[120px]">
+                                <span className="text-[10px] font-bold text-white leading-tight mb-0.5 block line-clamp-2">{block.associatedExam.title}</span>
+                                <span className="text-[9px] font-medium text-white/90 leading-tight block whitespace-pre-line">{block.associatedExam.timeStr}</span>
+                                <span className="text-[9px] font-bold text-red-200 truncate mt-0.5 block">{block.associatedExam.subtitle}</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
-
-                      <span className="text-[9px] font-medium text-gray-800 dark:text-gray-300 leading-tight whitespace-pre-line">{block.timeStr}</span>
-                      {block.subtitle && <span className="text-[9px] text-gray-700 dark:text-gray-400 truncate mt-0.5">{block.subtitle}</span>}
-                      
-                      {block.note && (
-                        <div className="absolute inset-0 z-20 pointer-events-none group/note">
-                          <div 
-                            onClick={(e) => { e.stopPropagation(); handleOpenNote(block); }}
-                            className="absolute bottom-1 right-1 w-5 h-5 bg-[#f1c40f] rounded border border-white flex items-center justify-center shadow-md transition-all duration-300 ease-in-out cursor-pointer pointer-events-auto group-hover/note:opacity-0 group-hover/note:scale-50"
-                          >
-                            <svg className="w-3 h-3 text-black" fill="currentColor" viewBox="0 0 20 20">
-                              <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z"/>
-                            </svg>
-                          </div>
-
-                          <div 
-                            onClick={(e) => { e.stopPropagation(); handleOpenNote(block); }}
-                            className="absolute bottom-1 right-1 w-5 h-5 opacity-0 rounded-md border-l-4 border-yellow-600 bg-[#f1c40f] shadow-lg flex flex-col overflow-hidden pointer-events-none transition-all duration-300 ease-out group-hover/note:bottom-0 group-hover/note:right-0 group-hover/note:w-full group-hover/note:h-full group-hover/note:opacity-100 group-hover/note:pointer-events-auto p-1.5"
-                          >
-                            <div className="w-full h-full flex flex-col">
-                              <span className="text-[10px] font-bold text-black mb-1 shrink-0">Note:</span>
-                              <span className="text-[9px] font-medium text-black/80 leading-tight whitespace-pre-line italic overflow-y-auto pr-1 scrollbar-hide">
-                                {block.note}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {block.associatedExam && (
-                        <div className="absolute inset-0 z-20 pointer-events-none group/exam">
-                          <div 
-                            onClick={(e) => handleBlockClick(e, block.associatedExam)}
-                            className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded border border-white flex items-center justify-center shadow-md transition-all duration-300 ease-in-out cursor-pointer pointer-events-auto group-hover/exam:opacity-0 group-hover/exam:scale-50"
-                          >
-                            <span className="text-white font-bold text-xs">!</span>
-                          </div>
-
-                          <div 
-                            onClick={(e) => handleBlockClick(e, block.associatedExam)}
-                            className="absolute top-1 right-1 w-5 h-5 opacity-0 rounded-md border-l-4 border-red-700 bg-[#e74c3c] shadow-lg flex flex-col overflow-hidden pointer-events-none transition-all duration-300 ease-out group-hover/exam:top-0 group-hover/exam:right-0 group-hover/exam:w-full group-hover/exam:h-full group-hover/exam:opacity-100 group-hover/exam:pointer-events-auto p-1.5"
-                          >
-                            <div className="w-max min-w-[120px]">
-                              <span className="text-[10px] font-bold text-white leading-tight mb-0.5 block line-clamp-2">{block.associatedExam.title}</span>
-                              <span className="text-[9px] font-medium text-white/90 leading-tight block whitespace-pre-line">{block.associatedExam.timeStr}</span>
-                              <span className="text-[9px] font-bold text-red-200 truncate mt-0.5 block">{block.associatedExam.subtitle}</span>
-                            </div>
-                          </div>
-                        </div>
-                      )}
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
 
               {isCurrentWeek && currentHourVal >= START_HOUR && currentHourVal <= END_HOUR && (
                 <div 
@@ -748,7 +933,55 @@ export default function ScheduleView({ onBack }) {
         </div>
       )}
 
-      {/* --- MODALE --- */}
+      {showCategoryModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" onClick={(e) => { e.stopPropagation(); setShowCategoryModal(false); }}>
+          <div className="bg-[#1c1c1e] border border-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <h2 className="text-xl font-bold mb-4">{categoryForm.id ? 'Edit Category' : 'New Category'}</h2>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Name</label>
+                <input 
+                  type="text" 
+                  value={categoryForm.name}
+                  onChange={e => setCategoryForm({...categoryForm, name: e.target.value})}
+                  className="w-full bg-[#2b2b2b] border border-gray-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-[#3498db]"
+                  placeholder="Category Name"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Color</label>
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="color" 
+                    value={categoryForm.color}
+                    onChange={e => setCategoryForm({...categoryForm, color: e.target.value})}
+                    className="w-10 h-10 rounded cursor-pointer bg-transparent border-0 p-0"
+                  />
+                  <span className="text-sm text-gray-400 font-mono">{categoryForm.color}</span>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex gap-3 mt-6">
+              <button 
+                onClick={() => setShowCategoryModal(false)}
+                className="flex-1 py-2.5 rounded-xl font-bold text-gray-400 bg-white/5 hover:bg-white/10 transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleSaveCategory}
+                className="flex-1 py-2.5 rounded-xl font-bold text-white bg-[#3498db] hover:bg-[#2980b9] transition-colors"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ExamFormModal 
         isOpen={showExamForm} 
         initialData={formInitialData} 
@@ -775,7 +1008,6 @@ export default function ScheduleView({ onBack }) {
         onSave={onSaveNote}
       />
 
-      {/* --- MODAL NOTATNIKA MINECRAFTOWEGO --- */}
       <MinecraftNotebook 
         isOpen={!!notebookSubject} 
         onClose={() => setNotebookSubject(null)} 

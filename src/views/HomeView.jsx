@@ -15,7 +15,6 @@ import AdminPanelView from './AdminPanelView'
 import FeedbackView from './FeedbackView'
 import MinecraftNotebook from '../components/MinecraftNotebook' 
 
-// --- FUNKCJE POMOCNICZE DLA SUBSKRYPCJI ---
 const getNextBillingDate = (billingDateStr, cycle) => {
   if (!billingDateStr) return null;
   const d = new Date(billingDateStr);
@@ -50,7 +49,6 @@ export default function HomeView() {
   const [historyReturnTab, setHistoryReturnTab] = useState('More') 
   const [currentTime, setCurrentTime] = useState(new Date())
 
-  // DODANE: Stan do przechowywania ID aktualnie zalogowanego użytkownika
   const [currentUserId, setCurrentUserId] = useState(null)
 
   const { 
@@ -74,21 +72,28 @@ export default function HomeView() {
   const [isStandalone, setIsStandalone] = useState(false);
   const [isBannerDismissed, setIsBannerDismissed] = useState(false);
   
-  // --- STANY DLA POWIADOMIENIA WINDOWS ---
   const [showWindowsToast, setShowWindowsToast] = useState(false);
   const [isWindows, setIsWindows] = useState(false);
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
 
-  // --- STAN DLA NOTATNIKA ---
   const [notebookSubject, setNotebookSubject] = useState(null);
 
-  // --- STANY I LOGIKA DLA SLIDERA "LATER TODAY" ---
   const [laterTodayIndex, setLaterTodayIndex] = useState(0);
 
-  // Pobranie ID użytkownika przy montowaniu komponentu
+  // --- STANY WYZWALAJĄCE SCROLL ---
+  const [tasksNeedScroll, setTasksNeedScroll] = useState(false);
+  const [shoppingNeedScroll, setShoppingNeedScroll] = useState(false);
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) setCurrentUserId(user.id);
     });
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   const rawLaterItems = useMemo(() => upcomingToday.slice(1), [upcomingToday]);
@@ -110,22 +115,18 @@ export default function HomeView() {
     setLaterTodayIndex(0);
   }, [upcomingToday]);
 
-  // --- NOWY SYSTEM KOLEJKOWANIA TOASTÓW (GLOBAL + DIRECT MESSAGES) ---
   const [isToastDismissed, setIsToastDismissed] = useState(false); 
   const [displayToast, setDisplayToast] = useState(null); 
   const [isToastVisible, setIsToastVisible] = useState(false); 
 
-  // Wyciągamy nieprzeczytane wiadomości TYLKO DLA OBECNEGO UŻYTKOWNIKA, sortujemy od najstarszych
   const unreadMessages = useMemo(() => {
     if (!currentUserId) return [];
     return (userMessages || [])
-      .filter(m => !m.is_read && m.user_id === currentUserId) // Zabezpieczenie: tylko wiadomości dla tego usera
+      .filter(m => !m.is_read && m.user_id === currentUserId)
       .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
   }, [userMessages, currentUserId]);
 
-  // Ustalamy, co ma być teraz na wierzchu w kolejce
   const activeToastData = useMemo(() => {
-    // 1. Priorytet: Globalny toast (jeśli aktywny i nie zamknięty)
     if (appConfig?.toast_message?.active && !isToastDismissed) {
       return {
         id: 'global_toast',
@@ -134,7 +135,6 @@ export default function HomeView() {
         text: appConfig.toast_message.text
       };
     }
-    // 2. Priorytet: Dedykowane wiadomości dla usera
     if (unreadMessages.length > 0) {
       return {
         id: unreadMessages[0].id,
@@ -143,25 +143,20 @@ export default function HomeView() {
         text: unreadMessages[0].content
       };
     }
-    // Pusto
     return null;
   }, [appConfig?.toast_message, isToastDismissed, unreadMessages]);
 
-  // Zarządzanie płynnymi animacjami między toastami w kolejce
   useEffect(() => {
     if (activeToastData && !displayToast) {
-      // Pojawia się pierwszy element z kolejki
       setDisplayToast(activeToastData);
       setTimeout(() => setIsToastVisible(true), 100); 
     } else if (activeToastData && displayToast && activeToastData.id !== displayToast.id) {
-      // Element w kolejce się zmienił (bo np. user zamknął poprzedni) - płynne przejście
-      setIsToastVisible(false); // zjazd
+      setIsToastVisible(false);
       setTimeout(() => {
-        setDisplayToast(activeToastData); // podmiana danych
-        setTimeout(() => setIsToastVisible(true), 50); // wjazd nowego
-      }, 400); // czekamy na zakończenie animacji wyjazdu
+        setDisplayToast(activeToastData);
+        setTimeout(() => setIsToastVisible(true), 50);
+      }, 400);
     } else if (!activeToastData && displayToast) {
-      // Kolejka pusta - chowamy do zera
       setIsToastVisible(false);
       setTimeout(() => setDisplayToast(null), 400);
     }
@@ -170,7 +165,7 @@ export default function HomeView() {
   const handleCloseGlobalToast = () => {
     setIsToastVisible(false);
     setTimeout(() => {
-      setIsToastDismissed(true); // Oznacza globalnego jako odrzucony
+      setIsToastDismissed(true);
       setDisplayToast(null);
     }, 400);
   };
@@ -178,7 +173,7 @@ export default function HomeView() {
   const handleMarkDirectAsRead = async (id) => {
     setIsToastVisible(false);
     setTimeout(async () => {
-      await markMessageAsRead(id); // Aktualizuje bazę
+      await markMessageAsRead(id);
       setDisplayToast(null);
     }, 400);
   };
@@ -186,13 +181,11 @@ export default function HomeView() {
   const mainTabs = ["Dashboard", "Plan", "Todo", "Schedule"];
   const moreTabs = ["Task History", "Exam Database & Archive", "Achievements", "Subjects & Semesters", "Grades", "Subscriptions"];
 
-  // --- WYKRYWANIE TRYBU APLIKACJI (PWA) ---
   useEffect(() => {
     const isPWA = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
     setIsStandalone(!!isPWA);
   }, []);
 
-// --- WYKRYWANIE WINDOWS & LOGIKA TOASTA WINDOWS ---
   useEffect(() => {
     if (!appConfig || !appConfig.windows_support) return;
 
@@ -217,13 +210,11 @@ export default function HomeView() {
     localStorage.setItem('hideSPlannerWindowsToast', 'true');
   };
 
-  // --- ZEGAR ---
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
     return () => clearInterval(timer)
   }, [])
 
-  // --- GŁÓWNA LOGIKA KALKULACYJNA ---
   useEffect(() => {
     if (isLoading || !dailyTasks) return;
 
@@ -231,14 +222,12 @@ export default function HomeView() {
     const todayStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
     const currentTimeStr = now.toTimeString().substring(0, 5);
 
-    // 1. Czas Skupienia
     const timeStat = globalStats?.find(s => s.key === 'daily_study_time');
     if (timeStat) {
       const safeStringValue = String(timeStat.value).replace(/"/g, '');
       setFocusTime(parseInt(safeStringValue) || 0);
     }
 
-    // 2. Postęp Dzisiejszy i Całkowity
     const todayTasks = dailyTasks?.filter(t => t.date === todayStr && t.list_id !== 'shopping') || [];
     const todayTopics = topics?.filter(t => t.scheduled_date === todayStr) || [];
     setTodayProgress({
@@ -262,7 +251,6 @@ export default function HomeView() {
       total: relevantTopics.length + relevantTasks.length
     });
 
-    // 3. Najbliższy Egzamin
     const upcomingExams = (exams || [])
       .filter(e => e.date >= todayStr)
       .sort((a, b) => {
@@ -271,7 +259,6 @@ export default function HomeView() {
       });
     setNextExam(upcomingExams.length > 0 ? upcomingExams[0] : null);
 
-    // 4. Now / Next (Zajęcia/Wydarzenia)
     let foundNext = null;
     let foundTodayList = [];
     const selectedSemesterID = "ALL";
@@ -365,7 +352,6 @@ export default function HomeView() {
     setNowNextItem(foundNext);
     setUpcomingToday(foundTodayList);
 
-    // 5. Kalkulator GPA
     const convertToGradeScale = (val) => {
       if (val <= 5.0) return val;
       if (val >= 90) return 5.0;
@@ -417,8 +403,6 @@ export default function HomeView() {
 
   }, [isLoading, dailyTasks, topics, exams, globalStats, subjects, scheduleEntries, cancellations, customEvents, eventLists, semesters, gradeModules, grades]);
 
-  // --- DANE DLA NOWYCH WIDGETÓW ---
-  
   const todayTasksList = useMemo(() => {
     if (!dailyTasks || !topics) return [];
     const now = new Date();
@@ -486,13 +470,27 @@ export default function HomeView() {
     return { ...target, daysLeft: days, subjColor: subj?.color || '#8e44ad' };
   }, [subscriptions, subjects]);
 
-  // --- ZMIENNE DETERMINUJĄCE CZY POTRZEBA ANIMACJI ---
-  const tasksNeedScroll = todayTasksList.length > 4;
-  const shoppingNeedScroll = shoppingItemsList.length > 4;
-
-  // --- REFERENCJE I LOGIKA NIESKOŃCZONEGO SCROLLA ---
   const tasksScrollRef = useRef(null);
   const shoppingScrollRef = useRef(null);
+
+  // --- LOGIKA DO OBLICZANIA OVERFLOW TASKS W DOM ---
+  useEffect(() => {
+    if (activeTab !== "Dashboard" || isLoading) return;
+    const el = tasksScrollRef.current;
+    if (el && el.firstElementChild) {
+      setTasksNeedScroll(el.firstElementChild.scrollHeight > el.clientHeight);
+    }
+  }, [todayTasksList, activeTab, isLoading]);
+
+  // --- LOGIKA DO OBLICZANIA OVERFLOW SHOPPING W DOM ---
+  useEffect(() => {
+    if (activeTab !== "Dashboard" || isLoading) return;
+    const el = shoppingScrollRef.current;
+    if (el && el.firstElementChild) {
+      setShoppingNeedScroll(el.firstElementChild.scrollHeight > el.clientHeight);
+    }
+  }, [shoppingItemsList, activeTab, isLoading]);
+
 
   useEffect(() => {
     if (activeTab !== "Dashboard" || isLoading || !tasksNeedScroll) return;
@@ -566,7 +564,6 @@ export default function HomeView() {
     };
   }, [shoppingItemsList, shoppingNeedScroll, activeTab, isLoading]);
 
-  // --- LOGIKA ODZNAK W MENU BOCZNYM ---
   const renderMenuBadge = (tabName) => {
     const mode = settings?.badge_mode || 'default';
     if (mode === 'off') return null;
@@ -633,7 +630,6 @@ export default function HomeView() {
     return null;
   };
 
-  // --- FORMATERY ZEGARA / WIDGETÓW ---
   const getNowNextState = () => {
     if (!nowNextItem) return { isNow: false, isStartingSoon: false, progress: 0, isToday: false, countdownStr: "" };
     
@@ -749,6 +745,17 @@ export default function HomeView() {
     const examDone = examTopics.filter(t => t.status === 'done').length;
     const examPct = examTotal > 0 ? Math.round((examDone / examTotal) * 100) : 0;
 
+    const layoutConfig = settings?.dashboard_layout?.[isMobile ? 'mobile' : 'desktop'] || {
+      progress: true,
+      now_next: true,
+      next_exam: true,
+      tasks: true,
+      shopping: true,
+      next_payment: true,
+      focus: true,
+      gpa: true
+    };
+
     return (
       <div className="flex flex-col gap-6">
         <style>{`
@@ -768,360 +775,381 @@ export default function HomeView() {
           }
         `}</style>
 
-        {/* WIDGETY PROGRESU (MOBILE) */}
-        <div className="grid grid-cols-2 gap-4 md:hidden">
-          <div className="bg-[#1c1c1e] p-5 rounded-3xl shadow-lg border border-white/5 flex flex-col items-center justify-center gap-2">
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Today</span>
-            <div className="text-2xl font-bold text-white">{todayProgress.done}/{todayProgress.total}</div>
-            <div className="h-1.5 w-full bg-gray-700 rounded-full overflow-hidden mt-1">
-              <div className="h-full bg-green-500 transition-all duration-1000" style={{ width: `${todayProgress.total > 0 ? (todayProgress.done/todayProgress.total)*100 : 0}%` }}></div>
-            </div>
-          </div>
-          <div className="bg-[#1c1c1e] p-5 rounded-3xl shadow-lg border border-white/5 flex flex-col items-center justify-center gap-2">
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Overall</span>
-            <div className="text-2xl font-bold text-white">{totalProgress.done}/{totalProgress.total}</div>
-            <div className="h-1.5 w-full bg-gray-700 rounded-full overflow-hidden mt-1">
-              <div className="h-full bg-blue-500 transition-all duration-1000" style={{ width: `${totalProgress.total > 0 ? (totalProgress.done/totalProgress.total)*100 : 0}%` }}></div>
-            </div>
-          </div>
-        </div>
-
-        {/* GŁÓWNA SIATKA WIDGETÓW */}
-        <div className="columns-1 lg:columns-2 xl:columns-3 gap-6 space-y-6">
-          
-          {/* 1. NOW / NEXT WIDGET */}
-          {nowNextItem ? (
-            <div 
-              onClick={() => setActiveTab("Schedule")} 
-              className="break-inside-avoid relative bg-[#1c1c1e] rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] cursor-pointer hover:bg-white/5 transition-colors"
-            >
-              {isStartingSoon && (
-                <>
-                  <div className="absolute inset-0 rounded-3xl border-2 pointer-events-none" style={{ borderColor: nowNextItem.hexColor }}></div>
-                  <div className="absolute inset-0 rounded-3xl border-[3px] animate-pulse-ring pointer-events-none" style={{ borderColor: nowNextItem.hexColor }}></div>
-                </>
-              )}
-              {isNow && (
-                <>
-                  <div className="absolute inset-0 rounded-3xl border-[4px] pointer-events-none opacity-15" style={{ borderColor: nowNextItem.hexColor }}></div>
-                  <svg className="absolute inset-0 w-full h-full pointer-events-none">
-                    <rect 
-                      x="2" y="2" 
-                      width="calc(100% - 4px)" height="calc(100% - 4px)" 
-                      rx="22" ry="22" 
-                      fill="none" 
-                      stroke={nowNextItem.hexColor} 
-                      strokeWidth="4" 
-                      strokeLinecap="round"
-                      pathLength="100"
-                      strokeDasharray="100"
-                      strokeDashoffset={100 - (progress * 100)}
-                      className="transition-all duration-1000 ease-linear"
-                    />
-                  </svg>
-                </>
-              )}
-              <div className="p-6 flex flex-col gap-4 relative z-10 h-full">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold uppercase tracking-wider" style={{ color: nowNextItem.hexColor }}>
-                    {isNow ? "Now" : "Next"}
-                  </span>
-                  
-                  <div className="flex items-center gap-2">
-                    {nowNextItem.subject && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setNotebookSubject(nowNextItem.subject);
-                        }}
-                        className="p-1.5 text-yellow-500 hover:text-yellow-400 bg-yellow-500/10 hover:bg-yellow-500/20 rounded-lg transition-colors border border-yellow-500/20"
-                        title="Open Notebook"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
-                        </svg>
-                      </button>
-                    )}
-                    <span className="text-xs px-2 py-1 rounded-md font-medium" style={{ backgroundColor: `${nowNextItem.hexColor}20`, color: nowNextItem.hexColor }}>
-                      {countdownStr}
-                    </span>
-                  </div>
-                </div>
-                
-                <div className="flex-1 flex flex-col justify-center">
-                  <span className="text-xl font-bold text-white truncate">{nowNextItem.title}</span>
-                  <div className="flex items-center gap-2 text-gray-400 text-sm mt-1">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                    <span>{isToday ? "Today" : nowNextItem.dateStr} • {nowNextItem.startTime} - {nowNextItem.endTime === "23:59" ? "End of day" : nowNextItem.endTime}</span>
-                  </div>
-                  <span className="text-gray-500 text-sm mt-1 truncate">
-                    {nowNextItem.typeStr} {nowNextItem.subtitle ? `• ${nowNextItem.subtitle}` : ""}
-                  </span>
-                </div>
-                
-                {isToday && upcomingToday.length > 1 && (
-                  <div className="mt-2 pt-3 border-t border-white/10 flex flex-col gap-2">
-                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Later Today</span>
-                    
-                    {displayLaterItems.length === 1 ? (
-                      <div className="flex items-center justify-between text-xs w-full">
-                        <div className="flex items-center gap-2 truncate pr-2">
-                          <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: displayLaterItems[0].hexColor }}></div>
-                          <span className="text-gray-300 truncate">{displayLaterItems[0].title}</span>
-                        </div>
-                        <span className="text-gray-500 shrink-0">{displayLaterItems[0].startTime}</span>
-                      </div>
-                    ) : (
-                      <div className="relative h-[20px] w-full overflow-hidden">
-                        {displayLaterItems.map((item, i) => {
-                          let offset = i - laterTodayIndex;
-                          const len = displayLaterItems.length;
-                          
-                          while (offset < -Math.floor(len/2)) offset += len;
-                          while (offset > Math.floor((len-1)/2)) offset -= len;
-                          
-                          const isJumping = offset < -1 || offset >= 1; 
-                          const translateY = `${offset * 100}%`;
-                          
-                          return (
-                            <div 
-                              key={`${i}-${item.title}`}
-                              className={`absolute inset-0 flex items-center justify-between text-xs w-full ${isJumping ? '' : 'transition-transform duration-500 ease-in-out'}`}
-                              style={{ transform: `translateY(${translateY})` }}
-                            >
-                              <div className="flex items-center gap-2 truncate pr-2">
-                                <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: item.hexColor }}></div>
-                                <span className="text-gray-300 truncate">{item.title}</span>
-                              </div>
-                              <span className="text-gray-500 shrink-0">{item.startTime}</span>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-
+        {layoutConfig.progress && (
+          <div className="grid grid-cols-2 gap-4 md:hidden">
+            <div className="bg-[#1c1c1e] p-5 rounded-3xl shadow-lg border border-white/5 flex flex-col items-center justify-center gap-2">
+              <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Today</span>
+              <div className="text-2xl font-bold text-white">{todayProgress.done}/{todayProgress.total}</div>
+              <div className="h-1.5 w-full bg-gray-700 rounded-full overflow-hidden mt-1">
+                <div className="h-full bg-green-500 transition-all duration-1000" style={{ width: `${todayProgress.total > 0 ? (todayProgress.done/todayProgress.total)*100 : 0}%` }}></div>
               </div>
             </div>
-          ) : (
-            <div 
-              onClick={() => setActiveTab("Schedule")} 
-              className="break-inside-avoid bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col gap-4 min-h-[140px] cursor-pointer hover:bg-white/5 transition-colors"
-            >
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Now / Next</span>
-              <div className="flex-1 flex items-center justify-center text-green-400 font-semibold text-lg">
-                {isLoading ? "Loading..." : "No events ahead"}
+            <div className="bg-[#1c1c1e] p-5 rounded-3xl shadow-lg border border-white/5 flex flex-col items-center justify-center gap-2">
+              <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Overall</span>
+              <div className="text-2xl font-bold text-white">{totalProgress.done}/{totalProgress.total}</div>
+              <div className="h-1.5 w-full bg-gray-700 rounded-full overflow-hidden mt-1">
+                <div className="h-full bg-blue-500 transition-all duration-1000" style={{ width: `${totalProgress.total > 0 ? (totalProgress.done/totalProgress.total)*100 : 0}%` }}></div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="columns-1 lg:columns-2 xl:columns-3 gap-6">
+          
+          {layoutConfig.now_next && (
+            <div className="break-inside-avoid mb-6 inline-block w-full">
+              {nowNextItem ? (
+                <div 
+                  onClick={() => setActiveTab("Schedule")} 
+                  className="relative bg-[#1c1c1e] rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] cursor-pointer hover:bg-white/5 transition-colors"
+                >
+                  {isStartingSoon && (
+                    <>
+                      <div className="absolute inset-0 rounded-3xl border-2 pointer-events-none" style={{ borderColor: nowNextItem.hexColor }}></div>
+                      <div className="absolute inset-0 rounded-3xl border-[3px] animate-pulse-ring pointer-events-none" style={{ borderColor: nowNextItem.hexColor }}></div>
+                    </>
+                  )}
+                  {isNow && (
+                    <>
+                      <div className="absolute inset-0 rounded-3xl border-[4px] pointer-events-none opacity-15" style={{ borderColor: nowNextItem.hexColor }}></div>
+                      <svg className="absolute inset-0 w-full h-full pointer-events-none">
+                        <rect 
+                          x="2" y="2" 
+                          width="calc(100% - 4px)" height="calc(100% - 4px)" 
+                          rx="22" ry="22" 
+                          fill="none" 
+                          stroke={nowNextItem.hexColor} 
+                          strokeWidth="4" 
+                          strokeLinecap="round"
+                          pathLength="100"
+                          strokeDasharray="100"
+                          strokeDashoffset={100 - (progress * 100)}
+                          className="transition-all duration-1000 ease-linear"
+                        />
+                      </svg>
+                    </>
+                  )}
+                  <div className="p-6 flex flex-col gap-4 relative z-10 h-full">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold uppercase tracking-wider" style={{ color: nowNextItem.hexColor }}>
+                        {isNow ? "Now" : "Next"}
+                      </span>
+                      
+                      <div className="flex items-center gap-2">
+                        {nowNextItem.subject && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setNotebookSubject(nowNextItem.subject);
+                            }}
+                            className="p-1.5 text-yellow-500 hover:text-yellow-400 bg-yellow-500/10 hover:bg-yellow-500/20 rounded-lg transition-colors border border-yellow-500/20"
+                            title="Open Notebook"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+                            </svg>
+                          </button>
+                        )}
+                        <span className="text-xs px-2 py-1 rounded-md font-medium" style={{ backgroundColor: `${nowNextItem.hexColor}20`, color: nowNextItem.hexColor }}>
+                          {countdownStr}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <div className="flex-1 flex flex-col justify-center">
+                      <span className="text-xl font-bold text-white truncate">{nowNextItem.title}</span>
+                      <div className="flex items-center gap-2 text-gray-400 text-sm mt-1">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        <span>{isToday ? "Today" : nowNextItem.dateStr} • {nowNextItem.startTime} - {nowNextItem.endTime === "23:59" ? "End of day" : nowNextItem.endTime}</span>
+                      </div>
+                      <span className="text-gray-500 text-sm mt-1 truncate">
+                        {nowNextItem.typeStr} {nowNextItem.subtitle ? `• ${nowNextItem.subtitle}` : ""}
+                      </span>
+                    </div>
+                    
+                    {isToday && upcomingToday.length > 1 && (
+                      <div className="mt-2 pt-3 border-t border-white/10 flex flex-col gap-2">
+                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Later Today</span>
+                        
+                        {displayLaterItems.length === 1 ? (
+                          <div className="flex items-center justify-between text-xs w-full">
+                            <div className="flex items-center gap-2 truncate pr-2">
+                              <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: displayLaterItems[0].hexColor }}></div>
+                              <span className="text-gray-300 truncate">{displayLaterItems[0].title}</span>
+                            </div>
+                            <span className="text-gray-500 shrink-0">{displayLaterItems[0].startTime}</span>
+                          </div>
+                        ) : (
+                          <div className="relative h-[20px] w-full overflow-hidden">
+                            {displayLaterItems.map((item, i) => {
+                              let offset = i - laterTodayIndex;
+                              const len = displayLaterItems.length;
+                              
+                              while (offset < -Math.floor(len/2)) offset += len;
+                              while (offset > Math.floor((len-1)/2)) offset -= len;
+                              
+                              const isJumping = offset < -1 || offset >= 1; 
+                              const translateY = `${offset * 100}%`;
+                              
+                              return (
+                                <div 
+                                  key={`${i}-${item.title}`}
+                                  className={`absolute inset-0 flex items-center justify-between text-xs w-full ${isJumping ? '' : 'transition-transform duration-500 ease-in-out'}`}
+                                  style={{ transform: `translateY(${translateY})` }}
+                                >
+                                  <div className="flex items-center gap-2 truncate pr-2">
+                                    <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: item.hexColor }}></div>
+                                    <span className="text-gray-300 truncate">{item.title}</span>
+                                  </div>
+                                  <span className="text-gray-500 shrink-0">{item.startTime}</span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                  </div>
+                </div>
+              ) : (
+                <div 
+                  onClick={() => setActiveTab("Schedule")} 
+                  className="bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col gap-4 min-h-[140px] cursor-pointer hover:bg-white/5 transition-colors"
+                >
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Now / Next</span>
+                  <div className="flex-1 flex items-center justify-center text-green-400 font-semibold text-lg">
+                    {isLoading ? "Loading..." : "No events ahead"}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {layoutConfig.next_exam && (
+            <div className="break-inside-avoid mb-6 inline-block w-full">
+              <div 
+                onClick={() => setActiveTab("Plan")} 
+                className="bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] cursor-pointer hover:bg-white/5 transition-colors"
+              >
+                <div className="flex justify-between items-center mb-4">
+                  <span className="text-xs font-bold uppercase tracking-wider" style={{ color: examState.hexColor }}>Next Exam</span>
+                  {nextExam && (
+                    <span className="text-xs px-2 py-1 rounded-md font-medium" style={{ backgroundColor: `${examState.hexColor}20`, color: examState.hexColor }}>
+                      {examState.countdownStr}
+                    </span>
+                  )}
+                </div>
+                
+                <div className="flex-1 flex items-center justify-center text-center">
+                  {isLoading ? (
+                    <span className="text-gray-400 font-medium">Loading...</span>
+                  ) : (
+                    nextExam ? (
+                      <div className="flex flex-col items-center justify-center w-full">
+                        <span className="text-xl font-bold text-white w-full truncate px-2">{nextExam.title}</span>
+                        <div className="flex items-center justify-center gap-2 text-gray-400 text-sm mt-2">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                          <span>{nextExam.date} • {nextExam.time?.substring(0, 5) || "TBA"}</span>
+                        </div>
+
+                        <div className="mt-4 w-full max-w-[80%] flex items-center gap-2">
+                          <div className="h-1.5 flex-1 bg-gray-700 rounded-full overflow-hidden">
+                            <div className="h-full transition-all" style={{ width: `${examPct}%`, backgroundColor: examState.hexColor }}></div>
+                          </div>
+                          <span className="text-[10px] text-gray-400 font-medium w-8 text-right">{examPct}%</span>
+                        </div>
+
+                      </div>
+                    ) : (
+                      <span className="text-gray-400 font-medium">No upcoming exams</span>
+                    )
+                  )}
+                </div>
               </div>
             </div>
           )}
 
-          {/* 2. NEXT EXAM WIDGET */}
-          <div 
-            onClick={() => setActiveTab("Plan")} 
-            className="break-inside-avoid bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] cursor-pointer hover:bg-white/5 transition-colors"
-          >
-            <div className="flex justify-between items-center mb-4">
-              <span className="text-xs font-bold uppercase tracking-wider" style={{ color: examState.hexColor }}>Next Exam</span>
-              {nextExam && (
-                <span className="text-xs px-2 py-1 rounded-md font-medium" style={{ backgroundColor: `${examState.hexColor}20`, color: examState.hexColor }}>
-                  {examState.countdownStr}
-                </span>
-              )}
-            </div>
-            
-            <div className="flex-1 flex items-center justify-center text-center">
-              {isLoading ? (
-                <span className="text-gray-400 font-medium">Loading...</span>
-              ) : (
-                nextExam ? (
-                  <div className="flex flex-col items-center justify-center w-full">
-                    <span className="text-xl font-bold text-white w-full truncate px-2">{nextExam.title}</span>
-                    <div className="flex items-center justify-center gap-2 text-gray-400 text-sm mt-2">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                      <span>{nextExam.date} • {nextExam.time?.substring(0, 5) || "TBA"}</span>
-                    </div>
-
-                    <div className="mt-4 w-full max-w-[80%] flex items-center gap-2">
-                      <div className="h-1.5 flex-1 bg-gray-700 rounded-full overflow-hidden">
-                        <div className="h-full transition-all" style={{ width: `${examPct}%`, backgroundColor: examState.hexColor }}></div>
+          {layoutConfig.tasks && (
+            <div className="break-inside-avoid mb-6 inline-block w-full">
+              <div 
+                onClick={() => { 
+                  if(todayTasksList.length > 0) {
+                    setTargetTodoList('all'); 
+                    setActiveTab('Todo');
+                  }
+                }}
+                className={`bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] max-h-[180px] overflow-hidden ${todayTasksList.length > 0 ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''}`}
+              >
+                <div className="flex items-center justify-between mb-3 shrink-0">
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Tasks for Today</span>
+                  {todayTasksList.length > 0 && <span className="text-xs bg-blue-500/20 text-[#3498db] px-2 py-0.5 rounded-full font-bold">{todayTasksList.length}</span>}
+                </div>
+                
+                <div 
+                  ref={tasksScrollRef}
+                  className="flex-1 overflow-hidden flex flex-col relative"
+                >
+                  {isLoading ? (
+                    <div className="flex-1 flex items-center justify-center text-gray-400 font-medium">Loading...</div>
+                  ) : todayTasksList.length > 0 ? (
+                    <>
+                      <div className="flex flex-col gap-2 pb-2">
+                        {todayTasksList.map(t => (
+                          <div key={t.id} className="flex items-start gap-2 text-sm shrink-0 w-full">
+                            <div className="w-1.5 h-1.5 rounded-full shrink-0 mt-1.5" style={{ backgroundColor: t.color }}></div>
+                            <span className="text-gray-200 break-words whitespace-normal leading-tight flex-1">{t.title}</span>
+                          </div>
+                        ))}
                       </div>
-                      <span className="text-[10px] text-gray-400 font-medium w-8 text-right">{examPct}%</span>
-                    </div>
-
-                  </div>
-                ) : (
-                  <span className="text-gray-400 font-medium">No upcoming exams</span>
-                )
-              )}
-            </div>
-          </div>
-
-          {/* 3. TASKS FOR TODAY WIDGET */}
-          <div 
-            onClick={() => { 
-              if(todayTasksList.length > 0) {
-                setTargetTodoList('all'); 
-                setActiveTab('Todo');
-              }
-            }}
-            className={`break-inside-avoid bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] max-h-[180px] overflow-hidden ${todayTasksList.length > 0 ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''}`}
-          >
-            <div className="flex items-center justify-between mb-3 shrink-0">
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Tasks for Today</span>
-              {todayTasksList.length > 0 && <span className="text-xs bg-blue-500/20 text-[#3498db] px-2 py-0.5 rounded-full font-bold">{todayTasksList.length}</span>}
-            </div>
-            
-            <div 
-              ref={tasksScrollRef}
-              className="flex-1 overflow-hidden flex flex-col relative"
-            >
-              {isLoading ? (
-                <div className="flex-1 flex items-center justify-center text-gray-400 font-medium">Loading...</div>
-              ) : todayTasksList.length > 0 ? (
-                <>
-                  <div className="flex flex-col gap-2 pb-2">
-                    {todayTasksList.map(t => (
-                      <div key={t.id} className="flex items-start gap-2 text-sm shrink-0 w-full">
-                        <div className="w-1.5 h-1.5 rounded-full shrink-0 mt-1.5" style={{ backgroundColor: t.color }}></div>
-                        <span className="text-gray-200 break-words whitespace-normal leading-tight flex-1">{t.title}</span>
-                      </div>
-                    ))}
-                  </div>
-                  {tasksNeedScroll && (
-                    <div className="flex flex-col gap-2 pb-2">
-                      {todayTasksList.map(t => (
-                        <div key={`dup-${t.id}`} className="flex items-start gap-2 text-sm shrink-0 w-full">
-                          <div className="w-1.5 h-1.5 rounded-full shrink-0 mt-1.5" style={{ backgroundColor: t.color }}></div>
-                          <span className="text-gray-200 break-words whitespace-normal leading-tight flex-1">{t.title}</span>
+                      {tasksNeedScroll && (
+                        <div className="flex flex-col gap-2 pb-2">
+                          {todayTasksList.map(t => (
+                            <div key={`dup-${t.id}`} className="flex items-start gap-2 text-sm shrink-0 w-full">
+                              <div className="w-1.5 h-1.5 rounded-full shrink-0 mt-1.5" style={{ backgroundColor: t.color }}></div>
+                              <span className="text-gray-200 break-words whitespace-normal leading-tight flex-1">{t.title}</span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex-1 flex flex-col items-center justify-center text-gray-500">
+                      <svg className="w-8 h-8 mb-1 text-green-500/50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                      <span className="text-sm font-medium">All done for today!</span>
                     </div>
                   )}
-                </>
-              ) : (
-                <div className="flex-1 flex flex-col items-center justify-center text-gray-500">
-                  <svg className="w-8 h-8 mb-1 text-green-500/50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                  <span className="text-sm font-medium">All done for today!</span>
                 </div>
-              )}
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* 4. SHOPPING LIST WIDGET */}
-          <div 
-            onClick={() => { 
-              setTargetTodoList(settings?.main_shopping_list_id || 'all'); 
-              setActiveTab('Todo');
-            }} 
-            className={`break-inside-avoid bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] max-h-[180px] overflow-hidden ${shoppingItemsList.length > 0 ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''}`}
-          >
-            <div className="flex items-center justify-between mb-3 shrink-0">
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Shopping List</span>
-              {shoppingItemsList.length > 0 && <span className="text-xs bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded-full font-bold">{shoppingItemsList.length}</span>}
-            </div>
-            
-            <div 
-              ref={shoppingScrollRef}
-              className="flex-1 overflow-hidden flex flex-col relative"
-            >
-              {isLoading ? (
-                <div className="flex-1 flex items-center justify-center text-gray-400 font-medium">Loading...</div>
-              ) : !settings?.main_shopping_list_id ? ( 
-                <div className="flex-1 flex flex-col items-center justify-center text-gray-500 text-center">
-                  <span className="text-2xl mb-1 opacity-50">🛒</span>
-                  <span className="text-xs font-medium">Set main list in Settings</span>
+          {layoutConfig.shopping && (
+            <div className="break-inside-avoid mb-6 inline-block w-full">
+              <div 
+                onClick={() => { 
+                  setTargetTodoList(settings?.main_shopping_list_id || 'all'); 
+                  setActiveTab('Todo');
+                }} 
+                className={`bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] max-h-[180px] overflow-hidden ${shoppingItemsList.length > 0 ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''}`}
+              >
+                <div className="flex items-center justify-between mb-3 shrink-0">
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Shopping List</span>
+                  {shoppingItemsList.length > 0 && <span className="text-xs bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded-full font-bold">{shoppingItemsList.length}</span>}
                 </div>
-              ) : shoppingItemsList.length > 0 ? (
-                <>
-                  <div className="flex flex-col gap-2 pb-2">
-                    {shoppingItemsList.map(item => (
-                      <div key={item.id} className="flex items-start gap-2 text-sm shrink-0 w-full">
-                        <span className="text-orange-400 shrink-0 text-xs mt-0.5">•</span>
-                        <span className="text-gray-200 break-words whitespace-normal leading-tight flex-1">{item.name}</span>
+                
+                <div 
+                  ref={shoppingScrollRef}
+                  className="flex-1 overflow-hidden flex flex-col relative"
+                >
+                  {isLoading ? (
+                    <div className="flex-1 flex items-center justify-center text-gray-400 font-medium">Loading...</div>
+                  ) : !settings?.main_shopping_list_id ? ( 
+                    <div className="flex-1 flex flex-col items-center justify-center text-gray-500 text-center">
+                      <span className="text-2xl mb-1 opacity-50">🛒</span>
+                      <span className="text-xs font-medium">Set main list in Settings</span>
+                    </div>
+                  ) : shoppingItemsList.length > 0 ? (
+                    <>
+                      <div className="flex flex-col gap-2 pb-2">
+                        {shoppingItemsList.map(item => (
+                          <div key={item.id} className="flex items-start gap-2 text-sm shrink-0 w-full">
+                            <span className="text-orange-400 shrink-0 text-xs mt-0.5">•</span>
+                            <span className="text-gray-200 break-words whitespace-normal leading-tight flex-1">{item.name}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                  {shoppingNeedScroll && (
-                    <div className="flex flex-col gap-2 pb-2">
-                      {shoppingItemsList.map(item => (
-                        <div key={`dup-${item.id}`} className="flex items-start gap-2 text-sm shrink-0 w-full">
-                          <span className="text-orange-400 shrink-0 text-xs mt-0.5">•</span>
-                          <span className="text-gray-200 break-words whitespace-normal leading-tight flex-1">{item.name}</span>
+                      {shoppingNeedScroll && (
+                        <div className="flex flex-col gap-2 pb-2">
+                          {shoppingItemsList.map(item => (
+                            <div key={`dup-${item.id}`} className="flex items-start gap-2 text-sm shrink-0 w-full">
+                              <span className="text-orange-400 shrink-0 text-xs mt-0.5">•</span>
+                              <span className="text-gray-200 break-words whitespace-normal leading-tight flex-1">{item.name}</span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="flex-1 flex flex-col items-center justify-center text-gray-500">
-                  <span className="text-2xl mb-1 opacity-50">🛒</span>
-                  <span className="text-sm font-medium">Cart is empty</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* 5. NEXT SUBSCRIPTION WIDGET */}
-          <div 
-            onClick={() => { if(nextSubscription) setActiveTab('Subscriptions') }}
-            className={`break-inside-avoid bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] ${nextSubscription ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''}`}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Next Payment</span>
-              {nextSubscription && (
-                <span className={`text-xs px-2 py-0.5 rounded-md font-bold ${nextSubscription.daysLeft === 0 ? 'bg-red-500/20 text-red-400' : 'bg-gray-800 text-gray-400'}`}>
-                  {nextSubscription.daysLeft === 0 ? 'Today' : `In ${nextSubscription.daysLeft} days`}
-                </span>
-              )}
-            </div>
-            
-            <div className="flex-1 flex flex-col justify-center">
-              {isLoading ? (
-                <div className="flex items-center justify-center text-gray-400 font-medium h-full">Loading...</div>
-              ) : nextSubscription ? (
-                <div className="flex justify-between items-center w-full gap-4">
-                  <div className="flex flex-col min-w-0 flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: nextSubscription.subjColor }}></div>
-                      <span className="font-bold text-lg text-white truncate">{nextSubscription.name}</span>
-                    </div>
-                    {nextSubscription.provider && <span className="text-xs text-gray-500 ml-4 truncate">{nextSubscription.provider}</span>}
-                  </div>
-                  
-                  {nextSubscription.cost && (
-                    <div className="flex flex-col items-end shrink-0">
-                      <span className="text-xl font-black text-gray-200">{nextSubscription.cost}</span>
-                      <span className="text-[10px] text-gray-500 font-bold uppercase">{nextSubscription.currency}</span>
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex-1 flex flex-col items-center justify-center text-gray-500">
+                      <span className="text-2xl mb-1 opacity-50">🛒</span>
+                      <span className="text-sm font-medium">Cart is empty</span>
                     </div>
                   )}
                 </div>
-              ) : (
-                <div className="flex items-center justify-center text-gray-500 font-medium h-full">
-                  No upcoming payments
+              </div>
+            </div>
+          )}
+
+          {layoutConfig.next_payment && (
+            <div className="break-inside-avoid mb-6 inline-block w-full">
+              <div 
+                onClick={() => { if(nextSubscription) setActiveTab('Subscriptions') }}
+                className={`bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] ${nextSubscription ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''}`}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Next Payment</span>
+                  {nextSubscription && (
+                    <span className={`text-xs px-2 py-0.5 rounded-md font-bold ${nextSubscription.daysLeft === 0 ? 'bg-red-500/20 text-red-400' : 'bg-gray-800 text-gray-400'}`}>
+                      {nextSubscription.daysLeft === 0 ? 'Today' : `In ${nextSubscription.daysLeft} days`}
+                    </span>
+                  )}
                 </div>
-              )}
+                
+                <div className="flex-1 flex flex-col justify-center">
+                  {isLoading ? (
+                    <div className="flex items-center justify-center text-gray-400 font-medium h-full">Loading...</div>
+                  ) : nextSubscription ? (
+                    <div className="flex justify-between items-center w-full gap-4">
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: nextSubscription.subjColor }}></div>
+                          <span className="font-bold text-lg text-white truncate">{nextSubscription.name}</span>
+                        </div>
+                        {nextSubscription.provider && <span className="text-xs text-gray-500 ml-4 truncate">{nextSubscription.provider}</span>}
+                      </div>
+                      
+                      {nextSubscription.cost && (
+                        <div className="flex flex-col items-end shrink-0">
+                          <span className="text-xl font-black text-gray-200">{nextSubscription.cost}</span>
+                          <span className="text-[10px] text-gray-500 font-bold uppercase">{nextSubscription.currency}</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center text-gray-500 font-medium h-full">
+                      No upcoming payments
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* 6. TODAY'S FOCUS WIDGET */}
-          <div className="break-inside-avoid bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col justify-between min-h-[140px]">
-            <span className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Today's Focus</span>
-            <div className="text-5xl font-bold text-indigo-400 mt-2">
-              {isLoading ? "--:--" : formatTime(focusTime)}
+          {layoutConfig.focus && (
+            <div className="break-inside-avoid mb-6 inline-block w-full">
+              <div className="bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col justify-between min-h-[140px]">
+                <span className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Today's Focus</span>
+                <div className="text-5xl font-bold text-indigo-400 mt-2">
+                  {isLoading ? "--:--" : formatTime(focusTime)}
+                </div>
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* 7. GPA WIDGET */}
-          <div 
-            onClick={() => setActiveTab("Grades")}
-            className="break-inside-avoid bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col justify-between min-h-[140px] cursor-pointer hover:bg-white/5 transition-colors"
-          >
-            <span className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Current GPA</span>
-            <div className="text-5xl font-bold text-[#f1c40f] mt-2">
-              {isLoading ? "--" : (gpa > 0 ? gpa.toFixed(2) : "0.00")}
+          {layoutConfig.gpa && (
+            <div className="break-inside-avoid mb-6 inline-block w-full">
+              <div 
+                onClick={() => setActiveTab("Grades")}
+                className="bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col justify-between min-h-[140px] cursor-pointer hover:bg-white/5 transition-colors"
+              >
+                <span className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Current GPA</span>
+                <div className="text-5xl font-bold text-[#f1c40f] mt-2">
+                  {isLoading ? "--" : (gpa > 0 ? gpa.toFixed(2) : "0.00")}
+                </div>
+              </div>
             </div>
-          </div>
+          )}
 
         </div>
       </div>

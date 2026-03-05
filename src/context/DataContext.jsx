@@ -30,7 +30,7 @@ export function DataProvider({ children }) {
   const [grades, setGrades] = useState([]);
   const [blockedDates, setBlockedDates] = useState([]); 
   const [subscriptions, setSubscriptions] = useState([]); 
-  const [subjectNotes, setSubjectNotes] = useState([]); // NOWY STAN DLA NOTATNIKÓW Z MINECRAFTA
+  const [subjectNotes, setSubjectNotes] = useState([]); 
   
   const [achievements, setAchievements] = useState([]); 
   const [popupQueue, setPopupQueue] = useState([]); 
@@ -39,11 +39,8 @@ export function DataProvider({ children }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [feedback, setFeedback] = useState([]);
 
-  // NOWY STAN DLA DEDYKOWANYCH WIADOMOŚCI OD ADMINA
   const [userMessages, setUserMessages] = useState([]);
 
-  // Pobieramy dane TYLKO RAZ po zamontowaniu DataProvidera. 
-  // Supabase automatycznie dba o tokeny pod spodem przy wywołaniach funkcji zapisujących.
   useEffect(() => {
     fetchDashboardData();
   }, []);
@@ -62,7 +59,7 @@ export function DataProvider({ children }) {
         appConfigRes, adminsRes,
         feedbackRes,
         subjectNotesRes,
-        userMessagesRes // NOWE ZAPYTANIE DO BAZY (Wiadomości od admina)
+        userMessagesRes
       ] = await Promise.all([
         supabase.from('daily_tasks').select('*'),
         supabase.from('task_lists').select('*'),
@@ -86,7 +83,7 @@ export function DataProvider({ children }) {
         supabase.from('admins').select('user_id'),
         supabase.from('feedback').select('*').order('created_at', { ascending: false }),
         supabase.from('subject_notes').select('*'),
-        supabase.from('user_messages').select('*') // POBIERAMY DEDYKOWANE WIADOMOŚCI
+        supabase.from('user_messages').select('*')
       ]);
 
       if (tasksRes.data) setDailyTasks(tasksRes.data);
@@ -114,8 +111,8 @@ export function DataProvider({ children }) {
       if (semestersRes.data) setSemesters(semestersRes.data);
       if (gradeModulesRes.data) setGradeModules(gradeModulesRes.data);
       if (subscriptionsRes.data) setSubscriptions(subscriptionsRes.data);
-      if (subjectNotesRes.data) setSubjectNotes(subjectNotesRes.data); // ZAPISUJEMY W STANIE
-      if (userMessagesRes?.data) setUserMessages(userMessagesRes.data); // ZAPISUJEMY W STANIE WIADOMOŚCI
+      if (subjectNotesRes.data) setSubjectNotes(subjectNotesRes.data); 
+      if (userMessagesRes?.data) setUserMessages(userMessagesRes.data); 
       
       if (achievementsRes.data) {
         setAchievements(achievementsRes.data.map(a => a.achievement_id));
@@ -164,8 +161,6 @@ export function DataProvider({ children }) {
 
   const saveFeedback = async (title, description) => {
     try {
-      // Tu zostawiamy pobieranie usera, na wypadek gdybyś wolał to kontrolować z klienta,
-      // ale jeśli masz auth.uid() ustawione dla tabeli feedback, to też możesz to pominąć.
       const { data: { user } } = await supabase.auth.getUser(); 
       const payload = {
         user_id: user?.id,
@@ -279,9 +274,18 @@ export function DataProvider({ children }) {
     newlyUnlocked.forEach(id => saveAchievement(id));
 
     const today = new Date().toISOString().split('T')[0];
-    const todayTasks = dailyTasks.filter(t => t.date === today);
     
-    if (todayTasks.length > 0 && todayTasks.every(t => t.status === 'done')) {
+    // Ignorujemy listy zakupowe, tak jak w HomeView
+    const shoppingListIDs = new Set(taskLists.filter(l => l.list_type === 'shopping').map(l => l.id));
+    
+    const todayTasks = dailyTasks.filter(t => t.date === today && !shoppingListIDs.has(t.list_id));
+    const todayTopics = topics.filter(t => t.scheduled_date === today);
+    
+    const hasTasksOrTopics = todayTasks.length > 0 || todayTopics.length > 0;
+    const allTasksDone = todayTasks.every(t => t.status === 'done');
+    const allTopicsDone = todayTopics.every(t => t.status === 'done');
+    
+    if (hasTasksOrTopics && allTasksDone && allTopicsDone) {
       if (!achievements.includes('clean_sheet')) saveAchievement('clean_sheet');
       
       const lastCongrats = localStorage.getItem('last_congrats_date');
@@ -290,7 +294,7 @@ export function DataProvider({ children }) {
         localStorage.setItem('last_congrats_date', today);
       }
     }
-  }, [dailyTasks, topics, exams, subjects, grades, gradeModules, blockedDates, globalStats, isLoading]);
+  }, [dailyTasks, taskLists, topics, exams, subjects, grades, gradeModules, blockedDates, globalStats, isLoading]);
 
   const updateSetting = async (key, value) => {
     try {
@@ -734,7 +738,6 @@ export function DataProvider({ children }) {
     } catch (error) { console.error("Błąd usuwania subskrypcji:", error); }
   };
 
-  // NOWA FUNKCJA DO ZAPISYWANIA NOTATEK MINECRAFTOWYCH
   const saveSubjectNote = async (subjectId, dataObj, lastOpenedPage) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -747,7 +750,6 @@ export function DataProvider({ children }) {
         updated_at: new Date().toISOString()
       };
 
-      // Sprawdzamy, czy istnieje już notatnik dla tego przedmiotu
       const existing = subjectNotes.find(n => n.subject_id === subjectId);
 
       if (existing) {
@@ -756,13 +758,12 @@ export function DataProvider({ children }) {
         await supabase.from('subject_notes').insert([payload]);
       }
 
-      await fetchDashboardData(); // Odświeża stan
+      await fetchDashboardData(); 
     } catch (error) {
       console.error("Błąd zapisywania notatnika przedmiotu:", error);
     }
   };
 
-  // NOWE FUNKCJE DLA DEDYKOWANYCH WIADOMOŚCI
   const sendUserMessage = async (userId, title, content) => {
     try {
       const payload = {
@@ -914,7 +915,7 @@ export function DataProvider({ children }) {
       customEvents, eventLists, semesters, gradeModules, grades,
       blockedDates,
       subscriptions, achievements, subjectNotes,
-      userMessages, sendUserMessage, markMessageAsRead, // UDOSTĘPNIAMY STAN I FUNKCJE WIADOMOŚCI
+      userMessages, sendUserMessage, markMessageAsRead, 
       settings,
       appConfig, isAdmin, updateAppConfig, 
       feedback, saveFeedback, replyToFeedback,
