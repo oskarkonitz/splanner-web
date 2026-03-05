@@ -13,7 +13,7 @@ import SubscriptionsView from './SubscriptionsView'
 import AchievementsView from './AchievementsView'
 import AdminPanelView from './AdminPanelView'
 import FeedbackView from './FeedbackView'
-import MinecraftNotebook from '../components/MinecraftNotebook' // DODANO IMPORT NOTATNIKA
+import MinecraftNotebook from '../components/MinecraftNotebook' 
 
 // --- FUNKCJE POMOCNICZE DLA SUBSKRYPCJI ---
 const getNextBillingDate = (billingDateStr, cycle) => {
@@ -44,7 +44,6 @@ const getDaysUntil = (targetDate) => {
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 };
 
-
 export default function HomeView() {
   const [activeTab, setActiveTab] = useState("Dashboard")
   const [targetTodoList, setTargetTodoList] = useState('all') 
@@ -57,7 +56,8 @@ export default function HomeView() {
     eventLists, semesters, gradeModules, grades,
     taskLists, subscriptions, settings,
     isAdmin,
-    appConfig
+    appConfig,
+    userMessages, markMessageAsRead // DODANO Z CONTEXTU
   } = useData()
 
   const [todayProgress, setTodayProgress] = useState({ done: 0, total: 0 })
@@ -70,9 +70,7 @@ export default function HomeView() {
 
   const [isStandalone, setIsStandalone] = useState(false);
   const [isBannerDismissed, setIsBannerDismissed] = useState(false);
-  const [isToastDismissed, setIsToastDismissed] = useState(false);
-  const [showAdminToast, setShowAdminToast] = useState(false);
-
+  
   // --- STANY DLA POWIADOMIENIA WINDOWS ---
   const [showWindowsToast, setShowWindowsToast] = useState(false);
   const [isWindows, setIsWindows] = useState(false);
@@ -85,7 +83,6 @@ export default function HomeView() {
 
   const rawLaterItems = useMemo(() => upcomingToday.slice(1), [upcomingToday]);
   const displayLaterItems = useMemo(() => {
-    // Jeżeli mamy tylko 2 elementy, dublujemy listę, by karuzela mogła bezpiecznie obracać domy poza widokiem
     if (rawLaterItems.length === 2) return [...rawLaterItems, ...rawLaterItems];
     return rawLaterItems;
   }, [rawLaterItems]);
@@ -103,18 +100,78 @@ export default function HomeView() {
     setLaterTodayIndex(0);
   }, [upcomingToday]);
 
+  // --- NOWY SYSTEM KOLEJKOWANIA TOASTÓW (GLOBAL + DIRECT MESSAGES) ---
+  const [isToastDismissed, setIsToastDismissed] = useState(false); // Dla globalnego toasta
+  const [displayToast, setDisplayToast] = useState(null); // Aktualnie wyrenderowany toast
+  const [isToastVisible, setIsToastVisible] = useState(false); // Kontroluje animację wjazdu/zjazdu
 
-  // --- OPÓŹNIENIE DLA TOAST MESSAGE ---
-  useEffect(() => {
+  // Wyciągamy nieprzeczytane wiadomości, sortujemy od najstarszych
+  const unreadMessages = useMemo(() => {
+    return (userMessages || [])
+      .filter(m => !m.is_read)
+      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  }, [userMessages]);
+
+  // Ustalamy, co ma być teraz na wierzchu w kolejce
+  const activeToastData = useMemo(() => {
+    // 1. Priorytet: Globalny toast (jeśli aktywny i nie zamknięty)
     if (appConfig?.toast_message?.active && !isToastDismissed) {
-      const timer = setTimeout(() => {
-        setShowAdminToast(true);
-      }, 800);
-      
-      return () => clearTimeout(timer);
+      return {
+        id: 'global_toast',
+        type: 'global',
+        title: appConfig.toast_message.title,
+        text: appConfig.toast_message.text
+      };
     }
-  }, [appConfig?.toast_message?.active, isToastDismissed]);
-  
+    // 2. Priorytet: Dedykowane wiadomości dla usera
+    if (unreadMessages.length > 0) {
+      return {
+        id: unreadMessages[0].id,
+        type: 'direct',
+        title: unreadMessages[0].title,
+        text: unreadMessages[0].content
+      };
+    }
+    // Pusto
+    return null;
+  }, [appConfig?.toast_message, isToastDismissed, unreadMessages]);
+
+  // Zarządzanie płynnymi animacjami między toastami w kolejce
+  useEffect(() => {
+    if (activeToastData && !displayToast) {
+      // Pojawia się pierwszy element z kolejki
+      setDisplayToast(activeToastData);
+      setTimeout(() => setIsToastVisible(true), 100); 
+    } else if (activeToastData && displayToast && activeToastData.id !== displayToast.id) {
+      // Element w kolejce się zmienił (bo np. user zamknął poprzedni) - płynne przejście
+      setIsToastVisible(false); // zjazd
+      setTimeout(() => {
+        setDisplayToast(activeToastData); // podmiana danych
+        setTimeout(() => setIsToastVisible(true), 50); // wjazd nowego
+      }, 400); // czekamy na zakończenie animacji wyjazdu
+    } else if (!activeToastData && displayToast) {
+      // Kolejka pusta - chowamy do zera
+      setIsToastVisible(false);
+      setTimeout(() => setDisplayToast(null), 400);
+    }
+  }, [activeToastData, displayToast]);
+
+  const handleCloseGlobalToast = () => {
+    setIsToastVisible(false);
+    setTimeout(() => {
+      setIsToastDismissed(true); // Oznacza globalnego jako odrzucony
+      setDisplayToast(null);
+    }, 400);
+  };
+
+  const handleMarkDirectAsRead = async (id) => {
+    setIsToastVisible(false);
+    setTimeout(async () => {
+      await markMessageAsRead(id); // Aktualizuje bazę
+      setDisplayToast(null);
+    }, 400);
+  };
+
   const mainTabs = ["Dashboard", "Plan", "Todo", "Schedule"];
   const moreTabs = ["Task History", "Exam Database & Archive", "Achievements", "Subjects & Semesters", "Grades", "Subscriptions"];
 
@@ -124,7 +181,7 @@ export default function HomeView() {
     setIsStandalone(!!isPWA);
   }, []);
 
-// --- WYKRYWANIE WINDOWS & LOGIKA TOASTA ---
+// --- WYKRYWANIE WINDOWS & LOGIKA TOASTA WINDOWS ---
   useEffect(() => {
     if (!appConfig || !appConfig.windows_support) return;
 
@@ -237,7 +294,7 @@ export default function HomeView() {
           title: subject.name, subtitle: roomStr, 
           startTime: entry.start_time, endTime: entry.end_time, 
           typeStr, hexColor: subject.color || "#3498db", dateStr: checkDateStr,
-          subject: subject // DODANE - przekazujemy obiekt przedmiotu dla ikony notatnika
+          subject: subject
         });
       }
       
@@ -279,7 +336,7 @@ export default function HomeView() {
           title: event.title, subtitle: "", 
           startTime: effectiveStart, endTime: effectiveEnd, 
           typeStr: listName, hexColor: event.color || "#3498db", dateStr: checkDateStr,
-          subject: null // Brak przedmiotu, to event
+          subject: null
         });
       }
       
@@ -354,7 +411,6 @@ export default function HomeView() {
   const todayTasksList = useMemo(() => {
     if (!dailyTasks || !topics) return [];
     const now = new Date();
-    // USUNIĘTO zależność od currentTime, lista nie będzie się przeliczać i resetować co sekundę!
     const todayStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
     
     const shoppingListIDs = new Set((taskLists || []).filter(l => l.list_type === 'shopping').map(l => l.id));
@@ -427,7 +483,6 @@ export default function HomeView() {
   const tasksScrollRef = useRef(null);
   const shoppingScrollRef = useRef(null);
 
-  // Efekt nieskończonej pętli dla "Tasks"
   useEffect(() => {
     if (activeTab !== "Dashboard" || isLoading || !tasksNeedScroll) return;
 
@@ -464,7 +519,6 @@ export default function HomeView() {
     };
   }, [todayTasksList, tasksNeedScroll, activeTab, isLoading]);
 
-  // Efekt nieskończonej pętli dla "Shopping"
   useEffect(() => {
     if (activeTab !== "Dashboard" || isLoading || !shoppingNeedScroll) return;
 
@@ -591,7 +645,6 @@ export default function HomeView() {
         progress = Math.max(0, Math.min(1, (currentMins - startMins) / (endMins - startMins)));
         
         const diff = endMins - currentMins;
-        // Pokaż sekundy jeśli zostało poniżej 1 minuty
         if (diff > 0 && diff < 1) {
           countdownStr = `Ends in ${Math.floor(diff * 60)}s`;
         } else {
@@ -604,7 +657,6 @@ export default function HomeView() {
           isStartingSoon = true;
         }
         const diff = startMins - currentMins;
-        // Pokaż sekundy jeśli zostało poniżej 1 minuty
         if (diff > 0 && diff < 1) {
           countdownStr = `Starts in ${Math.floor(diff * 60)}s`;
         } else {
@@ -641,7 +693,7 @@ export default function HomeView() {
         const h = Math.floor(diff / 60);
         const m = Math.floor(diff % 60);
         countdownStr = h > 0 ? `Starts in ${h}h ${m}m` : `Starts in ${m}m`;
-      } else if (currentMins >= startMins && currentMins <= startMins + 90) { // zakładamy 1.5h
+      } else if (currentMins >= startMins && currentMins <= startMins + 90) { 
         countdownStr = "In Progress";
       } else {
         countdownStr = "Finished";
@@ -681,7 +733,6 @@ export default function HomeView() {
     const { isNow, isStartingSoon, progress, isToday, countdownStr } = getNowNextState();
     const examState = getNextExamState();
     
-    // Obliczanie paska postępu dla nadchodzącego egzaminu
     const examTopics = nextExam ? (topics || []).filter(t => t.exam_id === nextExam.id) : [];
     const examTotal = examTopics.length;
     const examDone = examTopics.filter(t => t.status === 'done').length;
@@ -697,7 +748,6 @@ export default function HomeView() {
           .animate-pulse-ring {
             animation: pulseRing 1.2s ease-out infinite;
           }
-          /* Ukrywanie paska przewijania dla widgetów */
           .no-scrollbar::-webkit-scrollbar {
             display: none;
           }
@@ -725,7 +775,7 @@ export default function HomeView() {
           </div>
         </div>
 
-        {/* GŁÓWNA SIATKA WIDGETÓW W UKŁADZIE MASONRY (columns) */}
+        {/* GŁÓWNA SIATKA WIDGETÓW */}
         <div className="columns-1 lg:columns-2 xl:columns-3 gap-6 space-y-6">
           
           {/* 1. NOW / NEXT WIDGET */}
@@ -766,7 +816,6 @@ export default function HomeView() {
                     {isNow ? "Now" : "Next"}
                   </span>
                   
-                  {/* PRZYCISKI W PRAWYM GÓRNYM ROGU (NOTATNIK + ODLICZANIE) */}
                   <div className="flex items-center gap-2">
                     {nowNextItem.subject && (
                       <button
@@ -799,7 +848,6 @@ export default function HomeView() {
                   </span>
                 </div>
                 
-                {/* ZAPLANOWANE NA DZISIAJ - Z ANIMOWANYM SLIDEREM CSS */}
                 {isToday && upcomingToday.length > 1 && (
                   <div className="mt-2 pt-3 border-t border-white/10 flex flex-col gap-2">
                     <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Later Today</span>
@@ -883,7 +931,6 @@ export default function HomeView() {
                       <span>{nextExam.date} • {nextExam.time?.substring(0, 5) || "TBA"}</span>
                     </div>
 
-                    {/* PASEK PROGRESU */}
                     <div className="mt-4 w-full max-w-[80%] flex items-center gap-2">
                       <div className="h-1.5 flex-1 bg-gray-700 rounded-full overflow-hidden">
                         <div className="h-full transition-all" style={{ width: `${examPct}%`, backgroundColor: examState.hexColor }}></div>
@@ -930,7 +977,6 @@ export default function HomeView() {
                       </div>
                     ))}
                   </div>
-                  {/* Skopiowana lista - tworząca złudzenie nieskończoności (tylko gdy scroll jest potrzebny) */}
                   {tasksNeedScroll && (
                     <div className="flex flex-col gap-2 pb-2">
                       {todayTasksList.map(t => (
@@ -977,7 +1023,6 @@ export default function HomeView() {
                 </div>
               ) : shoppingItemsList.length > 0 ? (
                 <>
-                  {/* Główna lista zakupów */}
                   <div className="flex flex-col gap-2 pb-2">
                     {shoppingItemsList.map(item => (
                       <div key={item.id} className="flex items-start gap-2 text-sm shrink-0 w-full">
@@ -986,7 +1031,6 @@ export default function HomeView() {
                       </div>
                     ))}
                   </div>
-                  {/* Skopiowana lista zakupów (tylko gdy scroll jest potrzebny) */}
                   {shoppingNeedScroll && (
                     <div className="flex flex-col gap-2 pb-2">
                       {shoppingItemsList.map(item => (
@@ -1076,7 +1120,7 @@ export default function HomeView() {
   return (
     <div className="flex h-screen w-full bg-[#2b2b2b] text-white overflow-hidden relative">
       
-      {/* PASEK BOCZNY Z MARGINESEM U GÓRY DLA NOTCHA */}
+      {/* PASEK BOCZNY */}
       <aside className="hidden md:flex flex-col w-72 bg-[#1c1c1e] border-r border-gray-800 px-6 pb-6 pt-[calc(env(safe-area-inset-top)+1.5rem)] overflow-y-auto">
         <div 
           className="flex items-center gap-3 mb-10 cursor-pointer hover:opacity-80 transition-opacity shrink-0"
@@ -1115,7 +1159,6 @@ export default function HomeView() {
 
         <nav className="flex-1 flex flex-col gap-1 mt-2">
           <div className="text-xs text-gray-500 font-bold uppercase mb-2">Main Menu</div>
-          {/* ODfiltrowanie 'Task History', żeby nie duplikowało opcji na PC */}
           {[...mainTabs, ...moreTabs].filter(t => t !== "Dashboard" && t !== "Task History").map((item) => (
             <button 
               key={item}
@@ -1126,7 +1169,6 @@ export default function HomeView() {
               className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium transition-colors ${activeTab === item ? 'bg-[#3498db] text-white' : 'text-gray-300 hover:bg-gray-800 hover:text-white'}`}
             >
               <span>{item}</span>
-              {/* RENDEROWANIE ODZNAKI */}
               {renderMenuBadge(item)}
             </button>
           ))}
@@ -1211,7 +1253,6 @@ export default function HomeView() {
               </div>
 
               <div className="flex items-center gap-3">
-                {/* PRZYCISK ADMIN PANELU (Tylko dla administratorów) */}
                 {isAdmin && (
                   <button 
                     onClick={() => setActiveTab("Admin")} 
@@ -1309,28 +1350,43 @@ export default function HomeView() {
           </div>
         )}
 
-        {/* NOWY POPUP ADMINA (Toast Message) */}
-        {appConfig?.toast_message?.active && (
+        {/* NOWY SYSTEM KOLEJKOWANIA TOASTÓW (GLOBAL/DIRECT) */}
+        {displayToast && (
           <div 
-            className={`fixed bottom-[140px] md:bottom-36 right-6 z-50 bg-[#1c1c1e] border border-gray-700 rounded-2xl shadow-2xl p-5 w-72 md:w-80 transform transition-all duration-500 ease-in-out ${
-              showAdminToast && !isToastDismissed ? 'translate-x-0 opacity-100' : 'translate-x-[150%] opacity-0 pointer-events-none'
+            className={`fixed bottom-[140px] md:bottom-36 right-6 z-50 bg-[#1c1c1e] border border-gray-700 rounded-2xl shadow-2xl p-5 w-72 md:w-80 transform transition-all duration-400 ease-in-out ${
+              isToastVisible ? 'translate-x-0 opacity-100' : 'translate-x-[150%] opacity-0 pointer-events-none'
             }`}
           >
             <button 
-              onClick={() => setIsToastDismissed(true)}
+              onClick={() => {
+                if (displayToast.type === 'global') handleCloseGlobalToast();
+                else handleMarkDirectAsRead(displayToast.id);
+              }}
               className="absolute top-3 right-3 text-gray-500 hover:text-white transition-colors p-1"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
-            <div className="flex items-start gap-4">
-              <div className="bg-purple-500/20 p-2.5 rounded-xl text-purple-400 shrink-0 mt-0.5">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+            <div className="flex items-start gap-4 flex-col sm:flex-row">
+              <div className={`p-2.5 rounded-xl shrink-0 mt-0.5 ${displayToast.type === 'global' ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                {displayToast.type === 'global' ? (
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+                ) : (
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                )}
               </div>
-              <div>
-                <h4 className="text-white font-bold text-sm mb-1">{appConfig.toast_message.title}</h4>
-                <p className="text-gray-400 text-xs leading-relaxed pr-2 whitespace-pre-wrap">
-                  {appConfig.toast_message.text}
+              <div className="flex-1 w-full pr-4 sm:pr-2">
+                <h4 className="text-white font-bold text-sm mb-1">{displayToast.title}</h4>
+                <p className="text-gray-400 text-xs leading-relaxed whitespace-pre-wrap">
+                  {displayToast.text}
                 </p>
+                {displayToast.type === 'direct' && (
+                  <button 
+                    onClick={() => handleMarkDirectAsRead(displayToast.id)}
+                    className="mt-3 w-full py-1.5 text-[11px] font-bold uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-lg hover:bg-blue-500/20 transition-colors"
+                  >
+                    Mark as Read
+                  </button>
+                )}
               </div>
             </div>
           </div>

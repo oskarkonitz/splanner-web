@@ -3,7 +3,11 @@ import { supabase } from '../api/supabase';
 import { useData } from '../context/DataContext';
 
 export default function AdminPanelView({ onBack }) {
-  const { isAdmin, appConfig, updateAppConfig, dailyTasks, exams, subjects, feedback, replyToFeedback } = useData();
+  const { 
+    isAdmin, appConfig, updateAppConfig, dailyTasks, exams, subjects, 
+    feedback, replyToFeedback,
+    userMessages, sendUserMessage // DODANO: Pobieranie wiadomości i funkcji z kontekstu
+  } = useData();
 
   const [activeTab, setActiveTab] = useState('System'); 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -38,9 +42,12 @@ export default function AdminPanelView({ onBack }) {
   const [selectedUser, setSelectedUser] = useState(null);
   const [selectedUserStats, setSelectedUserStats] = useState(null);
   const [isLoadingUserStats, setIsLoadingUserStats] = useState(false);
-  
-  // NOWE: Stan dla edycji linku do wideo w modalu użytkownika
   const [videoUrlInput, setVideoUrlInput] = useState('');
+
+  // NOWE: Stany dla wiadomości do użytkownika
+  const [newMessageTitle, setNewMessageTitle] = useState('');
+  const [newMessageContent, setNewMessageContent] = useState('');
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
 
   // Filtrowanie i sortowanie zgłoszeń
   const sortedFeedback = useMemo(() => {
@@ -58,6 +65,14 @@ export default function AdminPanelView({ onBack }) {
       user.email?.toLowerCase().includes(userSearchQuery.toLowerCase())
     );
   }, [usersList, userSearchQuery]);
+
+  // Pobranie wiadomości konkretnego użytkownika
+  const selectedUserMessages = useMemo(() => {
+    if (!selectedUser || !userMessages) return [];
+    return userMessages
+      .filter(m => m.user_id === selectedUser.id)
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  }, [selectedUser, userMessages]);
 
   // Synchronizacja lokalnych stanów configu
   useEffect(() => {
@@ -128,6 +143,8 @@ export default function AdminPanelView({ onBack }) {
     setSelectedUser(user);
     setSelectedUserStats(null); // Reset statystyk przy otwarciu nowego
     setVideoUrlInput(user.custom_splash_video_url || ''); // Ustawienie obecnego linku do wideo
+    setNewMessageTitle(''); // Reset pól wiadomości
+    setNewMessageContent('');
   };
 
   const fetchSpecificUserStats = async (userId) => {
@@ -205,6 +222,17 @@ export default function AdminPanelView({ onBack }) {
       console.error("Błąd aktualizacji URL wideo:", err);
       alert("Failed to update video URL.");
     }
+  };
+
+  // NOWE: Wysyłanie dedykowanej wiadomości
+  const handleSendMessage = async () => {
+    if (!selectedUser || !newMessageTitle.trim() || !newMessageContent.trim()) return;
+    setIsSendingMessage(true);
+    await sendUserMessage(selectedUser.id, newMessageTitle.trim(), newMessageContent.trim());
+    setNewMessageTitle('');
+    setNewMessageContent('');
+    setIsSendingMessage(false);
+    alert('Message sent successfully!');
   };
 
   // --- HANDLERY KONFIGURACJI ---
@@ -693,12 +721,12 @@ export default function AdminPanelView({ onBack }) {
         <div className="fixed inset-0 bg-black/80 z-[60] flex justify-center items-center p-4">
           <div className="bg-[#1c1c1e] rounded-3xl w-full max-w-xl max-h-[90vh] overflow-y-auto border border-gray-700 shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
             
-            <div className="flex justify-between items-center p-6 border-b border-gray-800">
+            <div className="flex justify-between items-center p-6 border-b border-gray-800 sticky top-0 bg-[#1c1c1e] z-10">
               <h2 className="text-xl font-bold flex items-center gap-2">
                 User Details
                 {selectedUser.is_admin && <span className="text-[10px] font-bold bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded-md uppercase tracking-wide">Admin</span>}
               </h2>
-              <button onClick={() => setSelectedUser(null)} className="text-gray-400 hover:text-white p-2">
+              <button onClick={() => setSelectedUser(null)} className="text-gray-400 hover:text-white p-2 bg-black/20 rounded-xl">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
               </button>
             </div>
@@ -759,7 +787,7 @@ export default function AdminPanelView({ onBack }) {
                 )}
               </div>
 
-              {/* NOWE: Sekcja Custom Video Splash */}
+              {/* Sekcja Custom Video Splash */}
               <div className="bg-[#2b2b2b] p-4 rounded-2xl border border-white/5 space-y-3">
                 <span className="text-xs font-bold text-[#3498db] uppercase">Custom Splash Video</span>
                 <p className="text-xs text-gray-400">Provide an MP4 URL. If set, this user will see the video instead of the normal loading screen upon login.</p>
@@ -780,7 +808,59 @@ export default function AdminPanelView({ onBack }) {
                 </div>
               </div>
 
-              {/* Sekcja Akcji */}
+              {/* NOWE: Sekcja Direct Message (Wysyłanie wiadomości do użytkownika) */}
+              <div className="border-t border-gray-800 pt-6">
+                <span className="text-xs font-bold text-[#3498db] uppercase block mb-4">Direct Message</span>
+                <div className="space-y-3">
+                  <input 
+                    type="text" 
+                    placeholder="Message Title" 
+                    value={newMessageTitle} 
+                    onChange={e => setNewMessageTitle(e.target.value)} 
+                    className="w-full bg-[#1c1c1e] text-white px-3 py-2 rounded-xl border border-gray-700 focus:border-[#3498db] focus:outline-none text-sm"
+                  />
+                  <textarea 
+                    placeholder="Message Content..." 
+                    value={newMessageContent} 
+                    onChange={e => setNewMessageContent(e.target.value)} 
+                    className="w-full h-24 bg-[#1c1c1e] text-white px-3 py-2 rounded-xl border border-gray-700 focus:border-[#3498db] focus:outline-none text-sm resize-none"
+                  />
+                  <button 
+                    onClick={handleSendMessage} 
+                    disabled={isSendingMessage || !newMessageTitle.trim() || !newMessageContent.trim()}
+                    className="w-full bg-[#3498db] hover:bg-[#2980b9] text-white py-2 px-4 rounded-xl font-bold transition-colors disabled:opacity-50"
+                  >
+                    {isSendingMessage ? 'Sending...' : 'Send Message'}
+                  </button>
+                </div>
+              </div>
+
+              {/* NOWE: Historia Wiadomości Użytkownika */}
+              <div className="border-t border-gray-800 pt-6">
+                <span className="text-xs font-bold text-gray-500 uppercase block mb-4">Message History</span>
+                {selectedUserMessages.length === 0 ? (
+                  <div className="text-center text-gray-500 text-xs bg-[#2b2b2b] p-4 rounded-xl border border-white/5">
+                    No direct messages sent to this user yet.
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+                    {selectedUserMessages.map(msg => (
+                      <div key={msg.id} className="bg-[#2b2b2b] p-3 rounded-xl border border-white/5">
+                        <div className="flex justify-between items-start mb-1">
+                          <span className="font-bold text-sm text-white">{msg.title}</span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${msg.is_read ? 'bg-green-500/20 text-green-400' : 'bg-orange-500/20 text-orange-400'}`}>
+                            {msg.is_read ? 'Read' : 'Unread'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-400 line-clamp-2">{msg.content}</p>
+                        <span className="text-[10px] text-gray-500 mt-2 block">{new Date(msg.created_at).toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Sekcja Akcji (Danger Zone) */}
               <div className="border-t border-gray-800 pt-6">
                 <span className="text-xs font-bold text-[#e74c3c] uppercase block mb-4">Danger Zone & Admin Actions</span>
                 

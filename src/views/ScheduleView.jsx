@@ -477,7 +477,7 @@ export default function ScheduleView({ onBack }) {
         </div>
       </header>
 
-      <div className="md:hidden flex flex-col flex-1 overflow-hidden bg-[#121212]">
+      <div className="md:hidden flex flex-col flex-1 overflow-hidden bg-[#2b2b2b]">
         <div className="flex justify-between sm:justify-start overflow-x-auto gap-1 sm:gap-3 px-2 sm:px-4 py-2 sm:py-3 bg-[#1c1c1e] border-b border-gray-800 scrollbar-hide shrink-0">
           {weekDates.map((date, i) => {
             const dateStr = toDateString(date);
@@ -587,9 +587,9 @@ export default function ScheduleView({ onBack }) {
         </div>
       </div>
 
-      <main className="hidden md:flex flex-1 overflow-auto bg-white dark:bg-[#1c1c1e]" ref={scrollRef}>
+      <main className="hidden md:flex flex-1 overflow-auto bg-[#2b2b2b]" ref={scrollRef}>
         <div className="min-w-[800px] flex flex-col h-full w-full">
-          <div className="flex border-b border-gray-200 dark:border-gray-800 sticky top-0 z-20 bg-white dark:bg-[#1c1c1e]">
+          <div className="flex border-b border-gray-200 dark:border-gray-800 sticky top-0 z-20 bg-[#2b2b2b]">
             <div className="w-16 flex-shrink-0"></div>
             {weekDates.map((date, i) => {
               const isToday = toDateString(date) === todayStr;
@@ -605,7 +605,7 @@ export default function ScheduleView({ onBack }) {
           </div>
 
           <div className="flex relative w-full" style={{ height: `${(END_HOUR - START_HOUR) * PX_PER_HOUR}px` }}>
-            <div className="w-16 flex-shrink-0 relative border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-[#1c1c1e] z-10">
+            <div className="w-16 flex-shrink-0 relative border-r border-gray-200 dark:border-gray-800 bg-[#2b2b2b] z-10">
               {Array.from({ length: END_HOUR - START_HOUR + 1 }).map((_, i) => (
                 <div key={i} className="absolute w-full text-right pr-2 text-xs text-gray-500 font-medium -translate-y-1/2" style={{ top: i * PX_PER_HOUR }}>
                   {`${String(START_HOUR + i).padStart(2, '0')}:00`}

@@ -39,6 +39,9 @@ export function DataProvider({ children }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [feedback, setFeedback] = useState([]);
 
+  // NOWY STAN DLA DEDYKOWANYCH WIADOMOŚCI OD ADMINA
+  const [userMessages, setUserMessages] = useState([]);
+
   // Pobieramy dane TYLKO RAZ po zamontowaniu DataProvidera. 
   // Supabase automatycznie dba o tokeny pod spodem przy wywołaniach funkcji zapisujących.
   useEffect(() => {
@@ -58,7 +61,8 @@ export function DataProvider({ children }) {
         achievementsRes,
         appConfigRes, adminsRes,
         feedbackRes,
-        subjectNotesRes // NOWE ZAPYTANIE DO BAZY
+        subjectNotesRes,
+        userMessagesRes // NOWE ZAPYTANIE DO BAZY (Wiadomości od admina)
       ] = await Promise.all([
         supabase.from('daily_tasks').select('*'),
         supabase.from('task_lists').select('*'),
@@ -81,7 +85,8 @@ export function DataProvider({ children }) {
         supabase.from('app_config').select('*'), 
         supabase.from('admins').select('user_id'),
         supabase.from('feedback').select('*').order('created_at', { ascending: false }),
-        supabase.from('subject_notes').select('*') // POBIERAMY NOTATNIKI PRZEDMIOTÓW
+        supabase.from('subject_notes').select('*'),
+        supabase.from('user_messages').select('*') // POBIERAMY DEDYKOWANE WIADOMOŚCI
       ]);
 
       if (tasksRes.data) setDailyTasks(tasksRes.data);
@@ -110,6 +115,7 @@ export function DataProvider({ children }) {
       if (gradeModulesRes.data) setGradeModules(gradeModulesRes.data);
       if (subscriptionsRes.data) setSubscriptions(subscriptionsRes.data);
       if (subjectNotesRes.data) setSubjectNotes(subjectNotesRes.data); // ZAPISUJEMY W STANIE
+      if (userMessagesRes?.data) setUserMessages(userMessagesRes.data); // ZAPISUJEMY W STANIE WIADOMOŚCI
       
       if (achievementsRes.data) {
         setAchievements(achievementsRes.data.map(a => a.achievement_id));
@@ -756,6 +762,32 @@ export function DataProvider({ children }) {
     }
   };
 
+  // NOWE FUNKCJE DLA DEDYKOWANYCH WIADOMOŚCI
+  const sendUserMessage = async (userId, title, content) => {
+    try {
+      const payload = {
+        id: generateId('msg'),
+        user_id: userId,
+        title: title,
+        content: content,
+        is_read: false
+      };
+      await supabase.from('user_messages').insert([payload]);
+      await fetchDashboardData();
+    } catch (error) {
+      console.error("Błąd wysyłania wiadomości do użytkownika:", error);
+    }
+  };
+
+  const markMessageAsRead = async (messageId) => {
+    try {
+      await supabase.from('user_messages').update({ is_read: true }).eq('id', messageId);
+      setUserMessages(prev => prev.map(m => m.id === messageId ? { ...m, is_read: true } : m));
+    } catch (error) {
+      console.error("Błąd oznaczania wiadomości jako przeczytanej:", error);
+    }
+  };
+
 
   const runPlanner = async (onlyUnscheduled = false) => {
     const today = new Date();
@@ -881,7 +913,8 @@ export function DataProvider({ children }) {
       subjects, scheduleEntries, cancellations, scheduleNotes,
       customEvents, eventLists, semesters, gradeModules, grades,
       blockedDates,
-      subscriptions, achievements, subjectNotes, // UDOSTĘPNIAMY STAN NOTATNIKÓW
+      subscriptions, achievements, subjectNotes,
+      userMessages, sendUserMessage, markMessageAsRead, // UDOSTĘPNIAMY STAN I FUNKCJE WIADOMOŚCI
       settings,
       appConfig, isAdmin, updateAppConfig, 
       feedback, saveFeedback, replyToFeedback,
@@ -892,7 +925,7 @@ export function DataProvider({ children }) {
       deleteSubject, saveSemester, deleteSemester, setCurrentSemester,
       saveGradeModule, deleteGradeModule, saveGrade, deleteGrade, updateGradePoints,
       saveSubscription, deleteSubscription,
-      saveScheduleNote, saveBlockedDates, cancelClass, saveSubjectNote // UDOSTĘPNIAMY FUNKCJĘ ZAPISU
+      saveScheduleNote, saveBlockedDates, cancelClass, saveSubjectNote
     }}>
       {children}
       <GlobalPopups popupData={popupQueue[0]} onClose={() => setPopupQueue(prev => prev.slice(1))} />
