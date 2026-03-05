@@ -63,8 +63,8 @@ export default function ScheduleView({ onBack }) {
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [categoryForm, setCategoryForm] = useState({ id: null, name: '', color: '#3498db' });
 
-  // Stan śledzenia aktualnie najechanego kafelka
   const [hoveredBlockId, setHoveredBlockId] = useState(null);
+  const [hoveredSegmentId, setHoveredSegmentId] = useState(null);
 
   const scrollRef = useRef(null);
 
@@ -183,7 +183,7 @@ export default function ScheduleView({ onBack }) {
         duration: endVal - startVal,
         color: subject.color || "#3498db",
         title: subject.name,
-        timeStr: `${entry.start_time} \n ${entry.end_time}`,
+        timeStr: `${entry.start_time} - ${entry.end_time}`,
         startTime: entry.start_time,
         endTime: entry.end_time,
         subtitle: [entry.type, entry.room ? `Room ${entry.room}` : ''].filter(Boolean).join(' • '),
@@ -258,9 +258,9 @@ export default function ScheduleView({ onBack }) {
         let timeText = "All day";
         const displayEnd = ev.end_time === "23:59" || ev.end_time === "00:00" ? "End of day" : ev.end_time;
         
-        if (isStartDay && isEndDay) timeText = `${ev.start_time} \n ${displayEnd}`;
-        else if (isStartDay) timeText = `${ev.start_time} \n ...`;
-        else if (isEndDay) timeText = `... \n ${displayEnd}`;
+        if (isStartDay && isEndDay) timeText = `${ev.start_time} - ${displayEnd}`;
+        else if (isStartDay) timeText = `${ev.start_time} - ...`;
+        else if (isEndDay) timeText = `... - ${displayEnd}`;
 
         return {
           id: `ev_${ev.id}_${dateStr}`,
@@ -340,67 +340,99 @@ export default function ScheduleView({ onBack }) {
     
     visibleBlocks.forEach(b => blocksByDay[b.dayIdx].push(b));
 
-    const processed = [];
-    let nextGroupId = 0; // Unikalne ID dla paczki kolizyjnej
+    const processedSegments = [];
 
     blocksByDay.forEach(dayBlocks => {
+      if (dayBlocks.length === 0) return;
+
       dayBlocks.sort((a, b) => {
         if (a.startVal !== b.startVal) return a.startVal - b.startVal;
         return b.duration - a.duration;
       });
 
-      let currentGroup = [];
-      let groupEnd = 0;
-
-      const processGroup = (group) => {
-        const currentGroupId = nextGroupId++;
-        const columns = [];
-        group.forEach(block => {
-          let placed = false;
-          for (const col of columns) {
-            const lastInCol = col[col.length - 1];
-            if (lastInCol.startVal + lastInCol.duration <= block.startVal) {
-              col.push(block);
-              block.colIdx = columns.indexOf(col);
-              placed = true;
-              break;
-            }
-          }
-          if (!placed) {
-            block.colIdx = columns.length;
-            columns.push([block]);
-          }
-        });
-
-        const numCols = columns.length;
-        group.forEach(block => {
-          block.colCount = numCols;
-          block.groupId = currentGroupId; 
-          processed.push(block);
-        });
-      };
-
+      const columns = [];
       dayBlocks.forEach(block => {
-        if (currentGroup.length === 0) {
-          currentGroup.push(block);
-          groupEnd = block.startVal + block.duration;
-        } else {
-          if (block.startVal < groupEnd) {
-            currentGroup.push(block);
-            groupEnd = Math.max(groupEnd, block.startVal + block.duration);
-          } else {
-            processGroup(currentGroup);
-            currentGroup = [block];
-            groupEnd = block.startVal + block.duration;
+        let placed = false;
+        for (let i = 0; i < columns.length; i++) {
+          const col = columns[i];
+          const lastInCol = col[col.length - 1];
+          if (lastInCol.startVal + lastInCol.duration <= block.startVal + 0.001) {
+            col.push(block);
+            block.baseColIdx = i;
+            placed = true;
+            break;
           }
         }
+        if (!placed) {
+          block.baseColIdx = columns.length;
+          columns.push([block]);
+        }
       });
-      if (currentGroup.length > 0) {
-        processGroup(currentGroup);
+
+      const timePoints = new Set();
+      dayBlocks.forEach(b => {
+        timePoints.add(b.startVal);
+        timePoints.add(b.startVal + b.duration);
+      });
+      const sortedPoints = Array.from(timePoints).sort((a, b) => a - b);
+
+      for (let i = 0; i < sortedPoints.length - 1; i++) {
+        const slotStart = sortedPoints[i];
+        const slotEnd = sortedPoints[i + 1];
+        const slotDuration = slotEnd - slotStart;
+
+        if (slotDuration <= 0) continue;
+
+        const epsilon = 0.0001;
+        const activeBlocks = dayBlocks.filter(b =>
+          b.startVal < slotEnd - epsilon && (b.startVal + b.duration) > slotStart + epsilon
+        );
+
+        if (activeBlocks.length === 0) continue;
+
+        activeBlocks.sort((a, b) => a.baseColIdx - b.baseColIdx);
+        const colCount = activeBlocks.length;
+
+        activeBlocks.forEach((block, index) => {
+          const isFirstSegment = Math.abs(block.startVal - slotStart) < epsilon;
+          const isLastSegment = Math.abs((block.startVal + block.duration) - slotEnd) < epsilon;
+
+          processedSegments.push({
+            segmentId: `${block.id}_${slotStart}`,
+            blockId: block.id,
+            dayIdx: block.dayIdx,
+            startVal: slotStart,
+            duration: slotDuration,
+            colCount: colCount,
+            colIdx: index, 
+            isFirstSegment,
+            isLastSegment,
+            originalBlock: block,
+          });
+        });
       }
     });
 
-    return processed;
+    const segmentsByBlock = {};
+    processedSegments.forEach(seg => {
+      if (!segmentsByBlock[seg.blockId]) segmentsByBlock[seg.blockId] = [];
+      segmentsByBlock[seg.blockId].push(seg);
+    });
+
+    Object.values(segmentsByBlock).forEach(blockSegments => {
+      let bestSeg = blockSegments[0];
+      for (let i = 1; i < blockSegments.length; i++) {
+        const seg = blockSegments[i];
+        if (seg.colCount < bestSeg.colCount) {
+          bestSeg = seg;
+        } else if (seg.colCount === bestSeg.colCount && seg.duration > bestSeg.duration) {
+          bestSeg = seg;
+        }
+      }
+      blockSegments.forEach(seg => seg.isTextSegment = (seg === bestSeg));
+    });
+
+    return processedSegments;
   }, [blocks]);
 
   const agendaItems = useMemo(() => {
@@ -712,7 +744,7 @@ export default function ScheduleView({ onBack }) {
                           <span className="text-[10px] font-bold text-[#e74c3c] uppercase tracking-wider">{block.associatedExam.subtitle}</span>
                         </div>
                         <span className="text-[11px] text-[#e74c3c] opacity-90 font-medium break-words whitespace-normal">
-                          {block.associatedExam.timeStr.replace(/ \n /g, ' - ')}
+                          {block.associatedExam.timeStr}
                         </span>
                       </div>
                     )}
@@ -762,91 +794,112 @@ export default function ScheduleView({ onBack }) {
               ))}
 
               {(() => {
-                // Znajdź informacje o grupie kafelka, na który aktualnie najeżdżamy myszką
-                const hoveredBlockObj = layoutBlocks.find(b => b.id === hoveredBlockId);
-                const hoveredGroupId = hoveredBlockObj ? hoveredBlockObj.groupId : null;
-                const hoveredColIdx = hoveredBlockObj ? hoveredBlockObj.colIdx : null;
+                const hoveredSegments = hoveredBlockId 
+                  ? layoutBlocks.filter(s => s.blockId === hoveredBlockId)
+                  : [];
 
-                return layoutBlocks.map(block => {
-                  const top = (block.startVal - START_HOUR) * PX_PER_HOUR;
-                  let height = block.duration * PX_PER_HOUR;
+                return layoutBlocks.map(segment => {
+                  const block = segment.originalBlock;
+                  
                   let topOffset = 0;
+                  let height = segment.duration * PX_PER_HOUR;
 
-                  if (block.isCutTop) { topOffset = -6; height += 6; }
-                  if (block.isCutBottom) height += 30;
+                  if (segment.isFirstSegment && block.isCutTop) { topOffset = -6; height += 6; }
+                  if (segment.isLastSegment && block.isCutBottom) { height += 30; }
 
                   const isHovered = hoveredBlockId === block.id;
-                  const isOverlapping = block.colCount > 1;
-                  const isGroupHovered = isOverlapping && hoveredGroupId === block.groupId;
+                  const hoveredSegInSlot = hoveredSegments.find(s => 
+                     s.dayIdx === segment.dayIdx && s.startVal === segment.startVal
+                  );
 
-                  // BAZOWE (RÓWNE) SZEROKOŚCI, KIEDY MYSZKA NIE JEST NAD ZADNYM Z KAFELKÓW W GRUPIE
-                  let colWidthPct = 100 / block.colCount;
-                  let colLeftPct = (block.colIdx / block.colCount) * 100;
+                  let colWidthPct = 100 / segment.colCount;
+                  let colLeftPct = (segment.colIdx / segment.colCount) * 100;
+                  let zIndex = 10;
+                  let opacity = 1;
 
-                  // MATEMATYKA DLA 95% / 5% ROZSZERZANIA
-                  if (isGroupHovered) {
-                    const totalBlocksInGroup = block.colCount;
-                    const hIndex = hoveredColIdx; // indeks najechanego kafelka (0, 1, 2...)
-                    const remainingSpacePerBlock = 5 / (totalBlocksInGroup - 1); // np. 5% dzieli się na resztę
-
-                    if (block.colIdx < hIndex) {
-                      // Kafelki po lewej stronie najechanego
-                      colWidthPct = remainingSpacePerBlock;
-                      colLeftPct = block.colIdx * remainingSpacePerBlock;
-                    } else if (block.colIdx === hIndex) {
-                      // Akurat najeżdżany kafelek
-                      colWidthPct = 95;
-                      colLeftPct = hIndex * remainingSpacePerBlock;
+                  // ROZPYCHANIE 100% - 0% oraz wypychanie najechanego segmentu na sam szczyt stosu Z-index
+                  if (hoveredSegInSlot && segment.colCount > 1) {
+                    if (isHovered) {
+                      colWidthPct = 100;
+                      colLeftPct = 0;
+                      zIndex = hoveredSegmentId === segment.segmentId ? 50 : 40;
                     } else {
-                      // Kafelki po prawej stronie najechanego
-                      colWidthPct = remainingSpacePerBlock;
-                      colLeftPct = 95 + (block.colIdx - 1) * remainingSpacePerBlock;
+                      colWidthPct = 0;
+                      colLeftPct = segment.colIdx === 0 ? 0 : 100;
+                      zIndex = 0;
+                      opacity = 0;
                     }
+                  } else if (isHovered) {
+                    colWidthPct = 100;
+                    colLeftPct = 0;
+                    zIndex = hoveredSegmentId === segment.segmentId ? 50 : 40;
                   }
 
-                  // Konwersja wymiarów kolumny dnia na wielką siatkę całego tygodnia
+                  const isConflict = segment.colCount > 1 && !isHovered;
+                  const showLeftBorder = isHovered || segment.colIdx === 0 || segment.colCount === 1;
+
                   const finalWidthPct = (colWidthPct / 100) * (100 / 7);
-                  const finalLeftPct = (block.dayIdx / 7) * 100 + (colLeftPct / 100) * (100 / 7);
+                  const finalLeftPct = (segment.dayIdx / 7) * 100 + (colLeftPct / 100) * (100 / 7);
                   
-                  // Najeżdżany kafelek musi wyskoczyć "na wierzch" (z-index)
-                  const finalZIndex = isHovered ? 40 : (isGroupHovered ? 30 : 10);
+                  const showText = isHovered ? segment.isFirstSegment : segment.isTextSegment;
+                  const textHeight = isHovered 
+                    ? `${block.duration * PX_PER_HOUR}px`
+                    : `${(block.startVal + block.duration - segment.startVal) * PX_PER_HOUR}px`;
 
                   return (
                     <div
-                      key={block.id}
+                      key={segment.segmentId}
                       onClick={(e) => handleBlockClick(e, block)}
-                      onMouseEnter={() => setHoveredBlockId(block.id)}
-                      onMouseLeave={() => setHoveredBlockId(null)}
-                      className="absolute cursor-pointer group shadow-sm hover:shadow-xl transition-all duration-300 ease-in-out"
+                      onMouseEnter={() => { 
+                        setHoveredBlockId(block.id); 
+                        setHoveredSegmentId(segment.segmentId); 
+                      }}
+                      onMouseLeave={() => { 
+                        setHoveredBlockId(null); 
+                        setHoveredSegmentId(null); 
+                      }}
+                      className="absolute cursor-pointer group shadow-sm transition-all duration-300 ease-in-out"
                       style={{
                         left: `${finalLeftPct}%`,
                         width: `${finalWidthPct}%`,
-                        top: top + topOffset,
+                        top: (segment.startVal - START_HOUR) * PX_PER_HOUR + topOffset,
                         height: height,
-                        padding: '1px 2px',
-                        zIndex: finalZIndex
+                        padding: 0,
+                        zIndex: zIndex,
+                        opacity: opacity
                       }}
                     >
                       <div 
-                        className="w-full h-full rounded-md border-l-4 flex flex-col p-1.5 relative bg-[#1c1c1e] overflow-hidden"
+                        className="w-full h-full flex flex-col relative transition-colors"
                         style={{
-                          backgroundColor: `${block.color}40`, 
+                          backgroundColor: isHovered ? `${block.color}80` : `${block.color}40`, 
                           borderColor: block.color,
-                          borderTopLeftRadius: block.isCutTop ? '0' : undefined,
-                          borderTopRightRadius: block.isCutTop ? '0' : undefined,
-                          borderBottomLeftRadius: block.isCutBottom ? '0' : undefined,
-                          borderBottomRightRadius: block.isCutBottom ? '0' : undefined,
+                          borderLeftWidth: showLeftBorder ? '4px' : '0px',
+                          borderTopLeftRadius: segment.isFirstSegment && !block.isCutTop && !isConflict ? '0.375rem' : '0',
+                          borderTopRightRadius: segment.isFirstSegment && !block.isCutTop && !isConflict ? '0.375rem' : '0',
+                          borderBottomLeftRadius: segment.isLastSegment && !block.isCutBottom && !isConflict ? '0.375rem' : '0',
+                          borderBottomRightRadius: segment.isLastSegment && !block.isCutBottom && !isConflict ? '0.375rem' : '0',
                         }}
                       >
-                        <div className="flex justify-between items-start">
-                          <span className="text-[10px] font-bold text-gray-900 dark:text-white leading-tight mb-0.5 whitespace-nowrap overflow-hidden text-ellipsis">{block.title}</span>
-                        </div>
+                        {showText && ( 
+                          <div 
+                            className="absolute top-0 left-0 w-full p-1.5 flex flex-col pointer-events-none overflow-hidden z-30"
+                            style={{ height: textHeight }}
+                          >
+                            <div className="flex justify-between items-start">
+                              <span className="text-[10px] font-bold text-gray-900 dark:text-white leading-tight mb-0.5 whitespace-nowrap overflow-hidden text-ellipsis">{block.title}</span>
+                            </div>
 
-                        <span className="text-[9px] font-medium text-gray-800 dark:text-gray-300 leading-tight whitespace-nowrap overflow-hidden text-ellipsis">{block.timeStr.replace(/\n/g, '')}</span>
-                        {block.subtitle && <span className="text-[9px] text-gray-700 dark:text-gray-400 truncate mt-0.5">{block.subtitle}</span>}
+                            <span className="text-[9px] font-medium text-gray-800 dark:text-gray-300 leading-tight whitespace-nowrap overflow-hidden text-ellipsis">{block.timeStr}</span>
+                            {block.subtitle && <span className="text-[9px] font-medium text-gray-800 dark:text-gray-300 truncate mt-0.5">{block.subtitle}</span>}
+                          </div>
+                        )}
                         
-                        {block.note && (
-                          <div className="absolute inset-0 z-20 pointer-events-none group/note">
+                        {segment.isLastSegment && block.note && (
+                          <div 
+                            className="absolute inset-0 z-40 pointer-events-none group/note"
+                            style={{ '--full-height': `${block.duration * PX_PER_HOUR}px` }}
+                          >
                             <div 
                               onClick={(e) => { e.stopPropagation(); handleOpenNote(block); }}
                               className="absolute bottom-1 right-1 w-5 h-5 bg-[#f1c40f] rounded border border-white flex items-center justify-center shadow-md transition-all duration-300 ease-in-out cursor-pointer pointer-events-auto group-hover/note:opacity-0 group-hover/note:scale-50"
@@ -858,11 +911,11 @@ export default function ScheduleView({ onBack }) {
 
                             <div 
                               onClick={(e) => { e.stopPropagation(); handleOpenNote(block); }}
-                              className="absolute bottom-1 right-1 w-5 h-5 opacity-0 rounded-md border-l-4 border-yellow-600 bg-[#f1c40f] shadow-lg flex flex-col overflow-hidden pointer-events-none transition-all duration-300 ease-out group-hover/note:bottom-0 group-hover/note:right-0 group-hover/note:w-full group-hover/note:h-full group-hover/note:opacity-100 group-hover/note:pointer-events-auto p-1.5"
+                              className="absolute bottom-0 right-0 w-5 h-5 opacity-0 rounded-md border-l-4 border-yellow-600 bg-[#f1c40f] shadow-lg flex flex-col overflow-hidden pointer-events-none transition-all duration-300 ease-out group-hover/note:w-full group-hover/note:h-[var(--full-height)] group-hover/note:opacity-100 group-hover/note:pointer-events-auto p-1.5 z-[60]"
                             >
                               <div className="w-full h-full flex flex-col">
                                 <span className="text-[10px] font-bold text-black mb-1 shrink-0">Note:</span>
-                                <span className="text-[9px] font-medium text-black/80 leading-tight whitespace-pre-line italic overflow-y-auto pr-1 scrollbar-hide">
+                                <span className="text-[9px] font-medium text-black leading-tight whitespace-pre-line italic overflow-y-auto pr-1 scrollbar-hide">
                                   {block.note}
                                 </span>
                               </div>
@@ -870,8 +923,11 @@ export default function ScheduleView({ onBack }) {
                           </div>
                         )}
 
-                        {block.associatedExam && (
-                          <div className="absolute inset-0 z-20 pointer-events-none group/exam">
+                        {segment.isFirstSegment && block.associatedExam && (
+                          <div 
+                            className="absolute inset-0 z-40 pointer-events-none group/exam"
+                            style={{ '--full-height': `${block.duration * PX_PER_HOUR}px` }}
+                          >
                             <div 
                               onClick={(e) => handleBlockClick(e, block.associatedExam)}
                               className="absolute top-1 right-1 w-5 h-5 bg-red-500 rounded border border-white flex items-center justify-center shadow-md transition-all duration-300 ease-in-out cursor-pointer pointer-events-auto group-hover/exam:opacity-0 group-hover/exam:scale-50"
@@ -881,12 +937,12 @@ export default function ScheduleView({ onBack }) {
 
                             <div 
                               onClick={(e) => handleBlockClick(e, block.associatedExam)}
-                              className="absolute top-1 right-1 w-5 h-5 opacity-0 rounded-md border-l-4 border-red-700 bg-[#e74c3c] shadow-lg flex flex-col overflow-hidden pointer-events-none transition-all duration-300 ease-out group-hover/exam:top-0 group-hover/exam:right-0 group-hover/exam:w-full group-hover/exam:h-full group-hover/exam:opacity-100 group-hover/exam:pointer-events-auto p-1.5"
+                              className="absolute top-0 right-0 w-5 h-5 opacity-0 rounded-md border-l-4 border-red-700 bg-[#e74c3c] shadow-lg flex flex-col overflow-hidden pointer-events-none transition-all duration-300 ease-out group-hover/exam:w-full group-hover/exam:h-[var(--full-height)] group-hover/exam:opacity-100 group-hover/exam:pointer-events-auto p-1.5 z-[60]"
                             >
                               <div className="w-max min-w-[120px]">
                                 <span className="text-[10px] font-bold text-white leading-tight mb-0.5 block line-clamp-2">{block.associatedExam.title}</span>
-                                <span className="text-[9px] font-medium text-white/90 leading-tight block whitespace-pre-line">{block.associatedExam.timeStr}</span>
-                                <span className="text-[9px] font-bold text-red-200 truncate mt-0.5 block">{block.associatedExam.subtitle}</span>
+                                <span className="text-[9px] font-medium text-white leading-tight block whitespace-pre-line">{block.associatedExam.timeStr}</span>
+                                <span className="text-[9px] font-bold text-white truncate mt-0.5 block">{block.associatedExam.subtitle}</span>
                               </div>
                             </div>
                           </div>
