@@ -50,6 +50,9 @@ export default function HomeView() {
   const [historyReturnTab, setHistoryReturnTab] = useState('More') 
   const [currentTime, setCurrentTime] = useState(new Date())
 
+  // DODANE: Stan do przechowywania ID aktualnie zalogowanego użytkownika
+  const [currentUserId, setCurrentUserId] = useState(null)
+
   const { 
     isLoading, dailyTasks, topics, exams, globalStats,
     subjects, scheduleEntries, cancellations, customEvents, 
@@ -57,7 +60,7 @@ export default function HomeView() {
     taskLists, subscriptions, settings,
     isAdmin,
     appConfig,
-    userMessages, markMessageAsRead // DODANO Z CONTEXTU
+    userMessages, markMessageAsRead 
   } = useData()
 
   const [todayProgress, setTodayProgress] = useState({ done: 0, total: 0 })
@@ -81,6 +84,13 @@ export default function HomeView() {
   // --- STANY I LOGIKA DLA SLIDERA "LATER TODAY" ---
   const [laterTodayIndex, setLaterTodayIndex] = useState(0);
 
+  // Pobranie ID użytkownika przy montowaniu komponentu
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setCurrentUserId(user.id);
+    });
+  }, []);
+
   const rawLaterItems = useMemo(() => upcomingToday.slice(1), [upcomingToday]);
   const displayLaterItems = useMemo(() => {
     if (rawLaterItems.length === 2) return [...rawLaterItems, ...rawLaterItems];
@@ -101,16 +111,17 @@ export default function HomeView() {
   }, [upcomingToday]);
 
   // --- NOWY SYSTEM KOLEJKOWANIA TOASTÓW (GLOBAL + DIRECT MESSAGES) ---
-  const [isToastDismissed, setIsToastDismissed] = useState(false); // Dla globalnego toasta
-  const [displayToast, setDisplayToast] = useState(null); // Aktualnie wyrenderowany toast
-  const [isToastVisible, setIsToastVisible] = useState(false); // Kontroluje animację wjazdu/zjazdu
+  const [isToastDismissed, setIsToastDismissed] = useState(false); 
+  const [displayToast, setDisplayToast] = useState(null); 
+  const [isToastVisible, setIsToastVisible] = useState(false); 
 
-  // Wyciągamy nieprzeczytane wiadomości, sortujemy od najstarszych
+  // Wyciągamy nieprzeczytane wiadomości TYLKO DLA OBECNEGO UŻYTKOWNIKA, sortujemy od najstarszych
   const unreadMessages = useMemo(() => {
+    if (!currentUserId) return [];
     return (userMessages || [])
-      .filter(m => !m.is_read)
+      .filter(m => !m.is_read && m.user_id === currentUserId) // Zabezpieczenie: tylko wiadomości dla tego usera
       .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-  }, [userMessages]);
+  }, [userMessages, currentUserId]);
 
   // Ustalamy, co ma być teraz na wierzchu w kolejce
   const activeToastData = useMemo(() => {
