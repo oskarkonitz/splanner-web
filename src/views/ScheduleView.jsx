@@ -1,3 +1,4 @@
+// ScheduleView.jsx
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useData } from '../context/DataContext'
 import { supabase } from '../api/supabase' 
@@ -396,6 +397,7 @@ export default function ScheduleView({ onBack }) {
         activeBlocks.forEach((block, index) => {
           const isFirstSegment = Math.abs(block.startVal - slotStart) < epsilon;
           const isLastSegment = Math.abs((block.startVal + block.duration) - slotEnd) < epsilon;
+          const prevColor = index > 0 ? activeBlocks[index - 1].color : null;
 
           processedSegments.push({
             segmentId: `${block.id}_${slotStart}`,
@@ -408,8 +410,38 @@ export default function ScheduleView({ onBack }) {
             isFirstSegment,
             isLastSegment,
             originalBlock: block,
+            prevColor,
           });
         });
+      }
+    });
+
+    const segmentsByDay = Array.from({ length: 7 }, () => []);
+    processedSegments.forEach(seg => segmentsByDay[seg.dayIdx].push(seg));
+
+    processedSegments.forEach(seg1 => {
+      const endVal = seg1.startVal + seg1.duration;
+      const nextSlotSegs = segmentsByDay[seg1.dayIdx].filter(otherSeg => 
+        Math.abs(otherSeg.startVal - endVal) < 0.0001
+      );
+
+      const startX1 = seg1.colIdx / seg1.colCount;
+      const endX1 = (seg1.colIdx + 1) / seg1.colCount;
+
+      for (const seg2 of nextSlotSegs) {
+        const startX2 = seg2.colIdx / seg2.colCount;
+        const endX2 = (seg2.colIdx + 1) / seg2.colCount;
+        const overlap = Math.max(startX1, startX2) < Math.min(endX1, endX2) - 0.0001;
+
+        if (overlap && seg1.blockId !== seg2.blockId) {
+          seg1.touchesDifferentBlockBelow = true;
+          seg2.touchesDifferentBlockAbove = true;
+          if (seg1.colCount > seg2.colCount) {
+            seg1.bottomTouchColor = seg2.originalBlock.color;
+          } else {
+            seg2.topTouchColor = seg1.originalBlock.color;
+          }
+        }
       }
     });
 
@@ -812,12 +844,19 @@ export default function ScheduleView({ onBack }) {
                      s.dayIdx === segment.dayIdx && s.startVal === segment.startVal
                   );
 
+                  const isConflict = segment.colCount > 1 && !isHovered;
+                  const showLeftBorder = isHovered || segment.colIdx === 0 || segment.colCount === 1;
+                  const isSubsequentConflictCol = isConflict && segment.colIdx > 0;
+                  
+                  const hasTopConflict = segment.topTouchColor && !isHovered;
+                  const hasBottomConflict = segment.bottomTouchColor && !isHovered;
+
                   let colWidthPct = 100 / segment.colCount;
                   let colLeftPct = (segment.colIdx / segment.colCount) * 100;
-                  let zIndex = 10;
+                  
+                  let zIndex = (hasBottomConflict || hasTopConflict) ? 20 : 10;
                   let opacity = 1;
 
-                  // ROZPYCHANIE 100% - 0% oraz wypychanie najechanego segmentu na sam szczyt stosu Z-index
                   if (hoveredSegInSlot && segment.colCount > 1) {
                     if (isHovered) {
                       colWidthPct = 100;
@@ -835,8 +874,17 @@ export default function ScheduleView({ onBack }) {
                     zIndex = hoveredSegmentId === segment.segmentId ? 50 : 40;
                   }
 
-                  const isConflict = segment.colCount > 1 && !isHovered;
-                  const showLeftBorder = isHovered || segment.colIdx === 0 || segment.colCount === 1;
+                  const shadows = [];
+                  if (isSubsequentConflictCol) {
+                    shadows.push(`-2px 0 0 ${segment.prevColor}`);
+                  }
+                  if (hasTopConflict) {
+                    shadows.push(`0 -2px 0 ${segment.topTouchColor}`);
+                  }
+                  if (hasBottomConflict) {
+                    shadows.push(`0 2px 0 ${segment.bottomTouchColor}`);
+                  }
+                  const finalBoxShadow = shadows.length > 0 ? shadows.join(', ') : 'none';
 
                   const finalWidthPct = (colWidthPct / 100) * (100 / 7);
                   const finalLeftPct = (segment.dayIdx / 7) * 100 + (colLeftPct / 100) * (100 / 7);
@@ -874,11 +922,16 @@ export default function ScheduleView({ onBack }) {
                         style={{
                           backgroundColor: isHovered ? `${block.color}80` : `${block.color}40`, 
                           borderColor: block.color,
-                          borderLeftWidth: showLeftBorder ? '4px' : '0px',
-                          borderTopLeftRadius: segment.isFirstSegment && !block.isCutTop && !isConflict ? '0.375rem' : '0',
-                          borderTopRightRadius: segment.isFirstSegment && !block.isCutTop && !isConflict ? '0.375rem' : '0',
-                          borderBottomLeftRadius: segment.isLastSegment && !block.isCutBottom && !isConflict ? '0.375rem' : '0',
-                          borderBottomRightRadius: segment.isLastSegment && !block.isCutBottom && !isConflict ? '0.375rem' : '0',
+                          borderLeftWidth: showLeftBorder ? '4px' : (isSubsequentConflictCol ? '2px' : '0px'),
+                          borderTopWidth: hasTopConflict ? '2px' : '0px',
+                          borderTopStyle: hasTopConflict ? 'solid' : 'none',
+                          borderBottomWidth: hasBottomConflict ? '2px' : '0px',
+                          borderBottomStyle: hasBottomConflict ? 'solid' : 'none',
+                          boxShadow: finalBoxShadow,
+                          borderTopLeftRadius: segment.isFirstSegment && !block.isCutTop && !isConflict && !segment.touchesDifferentBlockAbove ? '0.375rem' : '0',
+                          borderTopRightRadius: segment.isFirstSegment && !block.isCutTop && !isConflict && !segment.touchesDifferentBlockAbove ? '0.375rem' : '0',
+                          borderBottomLeftRadius: segment.isLastSegment && !block.isCutBottom && !isConflict && !segment.touchesDifferentBlockBelow ? '0.375rem' : '0',
+                          borderBottomRightRadius: segment.isLastSegment && !block.isCutBottom && !isConflict && !segment.touchesDifferentBlockBelow ? '0.375rem' : '0',
                         }}
                       >
                         {showText && ( 

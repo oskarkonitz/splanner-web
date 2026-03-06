@@ -1,3 +1,4 @@
+// SettingsView.jsx
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../api/supabase'
 import { useData } from '../context/DataContext'
@@ -53,6 +54,13 @@ export default function SettingsView({ onBack }) {
     if (mode === 'dot') return 'Dots Only';
     if (mode === 'off') return 'Off';
     return 'Default (Numbers)';
+  }, [settings]);
+
+  const currentNextExamSwitchName = useMemo(() => {
+    const mode = settings?.next_exam_switch || settings?.next_exam_switch_hour || 'after_end';
+    if (mode === 'after_end') return 'After exam ends (+1.5h)';
+    if (mode === '24') return 'At midnight';
+    return `At ${mode}:00`;
   }, [settings]);
 
   const Section = ({ title, children }) => (
@@ -178,6 +186,12 @@ export default function SettingsView({ onBack }) {
             value={currentBadgeModeName} 
             hasArrow 
             onClick={() => setActiveModal('badgeMode')} 
+          />
+          <Row 
+            title="Next Exam Switch Time" 
+            value={currentNextExamSwitchName} 
+            hasArrow 
+            onClick={() => setActiveModal('nextExamSwitch')} 
           />
         </Section>
 
@@ -425,6 +439,46 @@ export default function SettingsView({ onBack }) {
                       onClick={() => handleSelectBadgeMode(mode.id)}
                       className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
                         (settings?.badge_mode || 'default') === mode.id 
+                        ? 'bg-[#3498db] text-white' 
+                        : 'bg-[#2b2b2b] text-gray-300 hover:bg-gray-800'
+                      }`}
+                    >
+                      {mode.name}
+                    </button>
+                  ))}
+                </div>
+
+                <button 
+                  onClick={() => setActiveModal(null)} 
+                  className="w-full py-3 bg-white/5 hover:bg-white/10 rounded-xl font-medium transition-colors mt-2"
+                >
+                  Close
+                </button>
+              </>
+            )}
+            
+            {activeModal === 'nextExamSwitch' && (
+              <>
+                <div className="text-center mb-2">
+                  <h3 className="text-xl font-bold">Next Exam Switch</h3>
+                  <p className="text-gray-400 text-sm mt-1">When should the dashboard widget switch to the next exam?</p>
+                </div>
+                
+                <div className="flex flex-col gap-2">
+                  {[
+                    { id: 'after_end', name: 'After exam ends (+1.5h)' },
+                    { id: '14', name: 'At 14:00' },
+                    { id: '18', name: 'At 18:00' },
+                    { id: '24', name: 'At midnight' }
+                  ].map(mode => (
+                    <button
+                      key={mode.id}
+                      onClick={async () => {
+                        await updateSetting('next_exam_switch', mode.id);
+                        setActiveModal(null);
+                      }}
+                      className={`w-full text-left px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
+                        (settings?.next_exam_switch || settings?.next_exam_switch_hour || 'after_end') === mode.id 
                         ? 'bg-[#3498db] text-white' 
                         : 'bg-[#2b2b2b] text-gray-300 hover:bg-gray-800'
                       }`}

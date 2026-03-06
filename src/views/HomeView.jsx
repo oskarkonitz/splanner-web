@@ -251,8 +251,27 @@ export default function HomeView() {
       total: relevantTopics.length + relevantTasks.length
     });
 
+    const switchSetting = settings?.next_exam_switch || settings?.next_exam_switch_hour || 'after_end';
+    const currentTotalMins = now.getHours() * 60 + now.getMinutes();
+
     const upcomingExams = (exams || [])
-      .filter(e => e.date >= todayStr)
+      .filter(e => {
+        if (e.date > todayStr) return true;
+        if (e.date < todayStr) return false;
+        
+        if (switchSetting === 'after_end') {
+          if (!e.time) return true; 
+          const startMins = parseInt(e.time.split(':')[0]) * 60 + parseInt(e.time.split(':')[1]);
+          const endMins = startMins + 90; // +1.5h
+          return currentTotalMins < endMins;
+        } else {
+          const switchHour = parseInt(switchSetting);
+          if (!isNaN(switchHour)) {
+             return currentTotalMins < switchHour * 60;
+          }
+          return true; 
+        }
+      })
       .sort((a, b) => {
         if (a.date === b.date) return (a.time || "00:00").localeCompare(b.time || "00:00");
         return a.date.localeCompare(b.date);
@@ -401,7 +420,7 @@ export default function HomeView() {
     }
     setGpa(totalECTS === 0 ? 0 : (weightedSum / totalECTS));
 
-  }, [isLoading, dailyTasks, topics, exams, globalStats, subjects, scheduleEntries, cancellations, customEvents, eventLists, semesters, gradeModules, grades]);
+  }, [isLoading, dailyTasks, topics, exams, globalStats, subjects, scheduleEntries, cancellations, customEvents, eventLists, semesters, gradeModules, grades, settings]);
 
   const todayTasksList = useMemo(() => {
     if (!dailyTasks || !topics) return [];
