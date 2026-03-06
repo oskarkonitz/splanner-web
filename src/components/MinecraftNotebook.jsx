@@ -51,19 +51,17 @@ export default function MinecraftNotebook({ isOpen, onClose, subject }) {
   
   const pagesRef = useRef(pages); 
   const pageNodesRef = useRef({}); 
-  const hasInitialized = useRef(false); // <--- NOWA REFEFENCJA BLOKUJĄCA RE-RENDER
+  const hasInitialized = useRef(false);
 
-  // Resetowanie inicjalizacji gdy zamykamy całkowicie
   useEffect(() => {
     if (!isOpen) {
       hasInitialized.current = false;
     }
   }, [isOpen]);
 
-  // Inicjalizacja i Animacja startowa (wykona się tylko RAZ na otwarcie)
   useEffect(() => {
     if (isOpen && subject && !hasInitialized.current) {
-      hasInitialized.current = true; // Blokuje kolejne odpalenia np. przy zapisywaniu "Done"
+      hasInitialized.current = true; 
 
       setIsClosing(false); 
       setIsAnimatingIn(true);
@@ -99,7 +97,6 @@ export default function MinecraftNotebook({ isOpen, onClose, subject }) {
         console.error("Błąd podczas otwierania notatnika:", err);
       }
 
-      // Animacja: Książka czeka zamknięta przez 1.7s, potem odpala się animacja otwierania okładki
       const timer = setTimeout(() => {
         setShowCover(false);
       }, 1700); 
@@ -203,18 +200,15 @@ export default function MinecraftNotebook({ isOpen, onClose, subject }) {
   };
 
   const triggerClose = (saveData = false) => {
-    // 1. Natychmiastowe wymuszenie zamknięcia
     setIsClosing(true); 
 
     if (saveData) {
       syncActivePagesToState();
       if (saveSubjectNote) {
-        // 2. Zapis leci w tle bez oczekiwania (await)
         saveSubjectNote(subject.id, { pages: pagesRef.current }, currentPage);
       }
     }
     
-    // 3. Czas na animację paraboli i cząsteczek
     setTimeout(() => {
       onClose();
     }, 1800);
@@ -372,7 +366,6 @@ export default function MinecraftNotebook({ isOpen, onClose, subject }) {
         
         .animate-hide-inner-book { animation: hideInnerBook 0.3s forwards; }
 
-        /* Parabola startuje o 0.3s później (gdy domknie się okładka) */
         .animate-parabola-drop-desktop { animation: parabolaDropDesktop 1s forwards 0.3s; }
         .animate-parabola-drop-mobile { animation: parabolaDropMobile 1s forwards 0.3s; }
 
@@ -423,6 +416,16 @@ export default function MinecraftNotebook({ isOpen, onClose, subject }) {
         .dust-2 { animation: dustRise2 0.6s ease-out 0.42s forwards; }
         .dust-3 { animation: dustRise3 0.6s ease-out 0.45s forwards; }
         .dust-4 { animation: dustRise4 0.6s ease-out 0.45s forwards; }
+
+        /* DODAJE STYLE DLA LIST W NOTATNIKU (Tailwind domyślnie je resetuje) */
+        .minecraft-page-content ul {
+          list-style-type: disc !important;
+          padding-left: 1.5rem !important;
+          margin: 0.5rem 0 !important;
+        }
+        .minecraft-page-content li {
+          display: list-item !important;
+        }
       `}</style>
 
       {toolbarPos && !showCover && !isClosing && (
@@ -431,7 +434,13 @@ export default function MinecraftNotebook({ isOpen, onClose, subject }) {
           style={{ top: toolbarPos.top, left: toolbarPos.left }}
           onClick={(e) => e.stopPropagation()} 
         >
-          <button onMouseDown={(e) => applyFormat(e, 'bold')} className="w-8 h-8 flex items-center justify-center font-bold text-white hover:bg-white/20 rounded">B</button>
+          <button onMouseDown={(e) => applyFormat(e, 'bold')} className="w-8 h-8 flex items-center justify-center font-bold text-white hover:bg-white/20 rounded" title="Pogrubienie">B</button>
+          <button onMouseDown={(e) => applyFormat(e, 'italic')} className="w-8 h-8 flex items-center justify-center italic font-serif text-white hover:bg-white/20 rounded" title="Kursywa">I</button>
+          <button onMouseDown={(e) => applyFormat(e, 'underline')} className="w-8 h-8 flex items-center justify-center underline text-white hover:bg-white/20 rounded" title="Podkreślenie">U</button>
+          <div className="w-px h-6 bg-gray-600 mx-1"></div>
+          <button onMouseDown={(e) => applyFormat(e, 'insertUnorderedList')} className="w-8 h-8 flex items-center justify-center text-white hover:bg-white/20 rounded" title="Lista punktowana">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"></path></svg>
+          </button>
           <div className="w-px h-6 bg-gray-600 mx-1"></div>
           <button onMouseDown={(e) => applyFormat(e, 'foreColor', '#FF5555')} className="w-6 h-6 rounded-full bg-[#FF5555] border border-black hover:scale-110 transition-transform"></button>
           <button onMouseDown={(e) => applyFormat(e, 'foreColor', '#55FF55')} className="w-6 h-6 rounded-full bg-[#55FF55] border border-black hover:scale-110 transition-transform"></button>
@@ -454,7 +463,7 @@ export default function MinecraftNotebook({ isOpen, onClose, subject }) {
         onClick={(e) => e.stopPropagation()} 
       >
         
-        {/* PYŁ PO UPADKU (Renderowany za książką) */}
+        {/* PYŁ PO UPADKU */}
         {isAnimatingIn && !isClosing && (
           <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 z-[20] pointer-events-none">
             <div className="dust-particle dust-1"></div>
@@ -476,10 +485,10 @@ export default function MinecraftNotebook({ isOpen, onClose, subject }) {
           </button>
         )}
 
-        {/* --- CAŁOŚĆ KSIĄŻKI ZE STRONAMI I OKŁADKĄ ZAMKNIĘTA WEWNĄTRZ --- */}
+        {/* --- CAŁOŚĆ KSIĄŻKI ZE STRONAMI I OKŁADKĄ --- */}
         <div className={`absolute inset-0 w-full h-full z-[10] ${isAnimatingIn && isDesktop && !isClosing ? 'animate-slide-desktop' : ''}`} style={{ transformStyle: 'preserve-3d' }}>
           
-          {/* OKŁADKA I JEJ ANIMACJE SPADANIA */}
+          {/* OKŁADKA */}
           {(showCover || isClosing) && (
             <div className={`absolute z-50 pointer-events-none ${isDesktop ? 'top-0 bottom-0 right-0 w-1/2' : 'inset-0 w-full'} ${isClosing ? (isDesktop ? 'animate-parabola-drop-desktop' : 'animate-parabola-drop-mobile') : ''}`} style={{ transformOrigin: 'center center' }}>
               
@@ -499,7 +508,7 @@ export default function MinecraftNotebook({ isOpen, onClose, subject }) {
                 </div>
               </div>
 
-              {/* CZĄSTECZKI PO UPADKU */}
+              {/* CZĄSTECZKI PO ZAMKNIĘCIU */}
               {isClosing && (
                 <div className="absolute top-[calc(50%+40vh)] left-[calc(50%+30px)] transform -translate-x-1/2 -translate-y-1/2">
                   <div className="despawn-particle" style={{"--dx": "-30px", "--dy": "-30px"}}></div>
