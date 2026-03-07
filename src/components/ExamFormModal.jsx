@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 
-const FormSection = ({ title, children }) => (
+const FormSection = ({ title, children, overflowVisible = false }) => (
   <div className="mb-6">
     {title && <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 ml-4">{title}</h2>}
-    <div className="bg-[#1c1c1e] rounded-2xl overflow-hidden border border-white/5">
+    <div className={`bg-[#1c1c1e] rounded-2xl border border-white/5 ${overflowVisible ? 'overflow-visible' : 'overflow-hidden'}`}>
       {children}
     </div>
   </div>
@@ -12,15 +12,15 @@ const FormSection = ({ title, children }) => (
 
 const FormRow = ({ label, children, border = true }) => (
   <div className={`flex items-center justify-between p-4 ${border ? 'border-b border-gray-800' : ''}`}>
-    <span className="font-medium text-white">{label}</span>
-    <div className="flex items-center text-right justify-end w-1/2">
+    <span className="font-medium text-white shrink-0">{label}</span>
+    <div className="flex items-center text-right justify-end flex-1 min-w-0 ml-4">
       {children}
     </div>
   </div>
 );
 
 export default function ExamFormModal({ isOpen, onClose, initialData = null }) {
-  const { subjects, saveExam, topics } = useData();
+  const { subjects, saveExam, topics, scheduleEntries, semesters } = useData();
   
   const isEditMode = !!initialData;
 
@@ -31,8 +31,15 @@ export default function ExamFormModal({ isOpen, onClose, initialData = null }) {
   const [ignoreBarrier, setIgnoreBarrier] = useState(false);
   const [topicsRaw, setTopicsRaw] = useState('');
 
+  const [selectedSemester, setSelectedSemester] = useState('all');
+  const [showSemesters, setShowSemesters] = useState(false);
+  
+  const [userModified, setUserModified] = useState(false);
+
   useEffect(() => {
     if (isOpen) {
+      setUserModified(false); 
+      
       if (initialData) {
         setTitle(initialData.title || '');
         setSubjectId(initialData.subject_id || '');
@@ -40,10 +47,17 @@ export default function ExamFormModal({ isOpen, onClose, initialData = null }) {
         setTime(initialData.time || '09:00');
         setIgnoreBarrier(initialData.ignore_barrier || false);
         
-        // Ładowanie istniejących tematów
         const examTopics = topics.filter(t => t.exam_id === initialData.id);
         const formattedTopics = examTopics.map((t, idx) => `${idx + 1}. ${t.name}`).join('\n');
         setTopicsRaw(formattedTopics);
+
+        const subject = subjects?.find(s => s.id === initialData.subject_id);
+        if (subject) {
+          setSelectedSemester(subject.semester_id);
+        } else if (semesters?.length > 0) {
+          const current = semesters.find(s => s.is_current);
+          setSelectedSemester(current ? current.id : 'all');
+        }
 
       } else {
         setTitle('');
@@ -54,9 +68,50 @@ export default function ExamFormModal({ isOpen, onClose, initialData = null }) {
         setTime('09:00');
         setIgnoreBarrier(false);
         setTopicsRaw('');
+
+        if (semesters?.length > 0) {
+          const current = semesters.find(s => s.is_current);
+          setSelectedSemester(current ? current.id : 'all');
+        } else {
+          setSelectedSemester('all');
+        }
       }
+      setShowSemesters(false);
     }
-  }, [isOpen, initialData, topics]);
+  }, [isOpen, initialData, topics, semesters, subjects]);
+
+  // SYSTEM SMART: Automatyczne ustawianie godziny na podstawie planu zajęć
+  useEffect(() => {
+    if (!isOpen || !date || !subjectId || !scheduleEntries) return;
+
+    if (isEditMode && !userModified) {
+      return; 
+    }
+
+    try {
+      const safeDate = new Date(`${date}T12:00:00`);
+      const jsDay = safeDate.getDay(); 
+      
+      // jsDay: 0 = Niedziela, 1 = Poniedziałek, ..., 6 = Sobota
+      // Tłumaczenie na format bazy, gdzie 0 = Poniedziałek, ..., 6 = Niedziela
+      const dbDay = (jsDay + 6) % 7;
+
+      const matchingEntry = scheduleEntries.find(entry => 
+        entry.subject_id === subjectId && 
+        String(entry.day_of_week) === String(dbDay)
+      );
+
+      if (matchingEntry && matchingEntry.start_time) {
+        const timeFormatted = matchingEntry.start_time.substring(0, 5);
+        setTime(timeFormatted);
+      } else if (userModified) {
+        // Jeśli użytkownik dokonał zmiany, a w dany dzień nie ma zajęć, resetujemy na domyślną
+        setTime('09:00');
+      }
+    } catch (error) {
+      console.error("Błąd systemu smart dla czasu egzaminu:", error);
+    }
+  }, [date, subjectId, scheduleEntries, isOpen, isEditMode, userModified]);
 
   if (!isOpen) return null;
 
@@ -84,11 +139,27 @@ export default function ExamFormModal({ isOpen, onClose, initialData = null }) {
     onClose();
   };
 
+  const handleSemesterChange = (semId) => {
+    setSelectedSemester(semId);
+    setShowSemesters(false);
+    
+    if (semId !== 'all' && subjectId) {
+      const subjectStillValid = subjects.find(s => s.id === subjectId && s.semester_id === semId);
+      if (!subjectStillValid) {
+        setSubjectId('');
+        setUserModified(true);
+      }
+    }
+  };
+
+  const filteredSubjects = selectedSemester === 'all' 
+    ? subjects 
+    : subjects?.filter(s => s.semester_id === selectedSemester);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 md:bg-black/60 md:backdrop-blur-sm transition-opacity p-0 md:p-4">
       <div className="bg-[#121212] md:bg-[#1c1c1e] w-full h-full md:h-auto md:max-h-[85vh] md:w-full md:max-w-md flex flex-col md:rounded-3xl md:border md:border-white/10 md:shadow-2xl animate-in fade-in slide-in-from-bottom-4 md:zoom-in-95">
         
-        {/* ZMIANA: Dodano pt-[calc(env(safe-area-inset-top)+1rem)] md:pt-4 oraz shrink-0 */}
         <header className="flex items-center justify-between p-4 pt-[calc(env(safe-area-inset-top)+1rem)] md:pt-4 bg-[#1c1c1e] md:bg-transparent border-b border-gray-800 shrink-0">
           <button onClick={onClose} className="text-[#3498db] text-lg font-medium active:opacity-70">
             Cancel
@@ -102,7 +173,7 @@ export default function ExamFormModal({ isOpen, onClose, initialData = null }) {
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 pb-20">
-          <FormSection title="Exam Info">
+          <FormSection title="Exam Info" overflowVisible={true}>
             <FormRow label="Title">
               <input 
                 type="text" 
@@ -114,17 +185,53 @@ export default function ExamFormModal({ isOpen, onClose, initialData = null }) {
             </FormRow>
             
             <FormRow label="Subject" border={false}>
-              <select 
-                value={subjectId} 
-                onChange={(e) => setSubjectId(e.target.value)}
-                className="w-full bg-transparent text-right text-[#3498db] focus:outline-none appearance-none cursor-pointer"
-                dir="rtl"
-              >
-                <option value="" disabled>Select Subject</option>
-                {subjects?.map(s => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
+              <div className="flex items-center justify-end w-full gap-3 relative">
+                
+                <button 
+                  onClick={() => setShowSemesters(!showSemesters)}
+                  className={`p-1.5 rounded-lg transition-colors shrink-0 ${selectedSemester !== 'all' ? 'text-[#3498db] bg-[#3498db]/10' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
+                  title="Filter by semester"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
+                </button>
+
+                {showSemesters && (
+                  <div className="absolute right-0 top-full mt-2 w-48 bg-[#2b2b2b] border border-gray-700 rounded-xl shadow-2xl z-50 p-2 flex flex-col gap-1">
+                    <button 
+                      onClick={() => handleSemesterChange('all')}
+                      className={`w-full text-left px-3 py-2 text-sm rounded-lg transition-colors ${selectedSemester === 'all' ? 'bg-[#3498db]/20 text-[#3498db] font-bold' : 'text-gray-300 hover:bg-white/5'}`}
+                    >
+                      All Semesters
+                    </button>
+                    {semesters?.map(sem => (
+                      <button 
+                        key={sem.id}
+                        onClick={() => handleSemesterChange(sem.id)}
+                        className={`w-full text-left px-3 py-2 text-sm rounded-lg truncate transition-colors ${selectedSemester === sem.id ? 'bg-[#3498db]/20 text-[#3498db] font-bold' : 'text-gray-300 hover:bg-white/5'}`}
+                      >
+                        {sem.name} {sem.is_current ? '(Current)' : ''}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <div className="h-5 w-px bg-gray-700 shrink-0"></div>
+
+                <select 
+                  value={subjectId} 
+                  onChange={(e) => {
+                    setSubjectId(e.target.value);
+                    setUserModified(true);
+                  }}
+                  className="bg-transparent text-right text-[#3498db] focus:outline-none appearance-none cursor-pointer flex-1 min-w-0"
+                  dir="rtl"
+                >
+                  <option value="" disabled>Select Subject</option>
+                  {filteredSubjects?.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
             </FormRow>
           </FormSection>
 
@@ -133,7 +240,10 @@ export default function ExamFormModal({ isOpen, onClose, initialData = null }) {
               <input 
                 type="date" 
                 value={date} 
-                onChange={(e) => setDate(e.target.value)}
+                onChange={(e) => {
+                  setDate(e.target.value);
+                  setUserModified(true);
+                }}
                 className="bg-transparent text-[#3498db] focus:outline-none text-right [color-scheme:dark]"
               />
             </FormRow>
@@ -142,7 +252,10 @@ export default function ExamFormModal({ isOpen, onClose, initialData = null }) {
               <input 
                 type="time" 
                 value={time} 
-                onChange={(e) => setTime(e.target.value)}
+                onChange={(e) => {
+                  setTime(e.target.value);
+                  setUserModified(true);
+                }}
                 className="bg-transparent text-[#3498db] focus:outline-none text-right [color-scheme:dark]"
               />
             </FormRow>
@@ -155,7 +268,6 @@ export default function ExamFormModal({ isOpen, onClose, initialData = null }) {
             </FormRow>
           </FormSection>
 
-          {/* Teraz tematy są widoczne także w Edit Mode */}
           <FormSection title="Topics (one per line)">
             <div className="p-4">
               <textarea 

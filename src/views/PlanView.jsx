@@ -450,7 +450,7 @@ export default function PlanView({ onBack }) {
                             >
                               <div className="flex items-center gap-4">
                                 <svg className="w-5 h-5 text-red-500 shrink-0 ml-1" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z" clipRule="evenodd"/></svg>
-                                <span className="font-bold text-red-400">EXAM: {exam.title} ({exam.subject})</span>
+                                <span className="font-bold text-red-400">{exam.title} ({exam.subject})</span>
                               </div>
                               
                               <div className="flex items-center gap-2 pr-1">

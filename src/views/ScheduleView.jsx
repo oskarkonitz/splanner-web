@@ -217,7 +217,7 @@ export default function ScheduleView({ onBack }) {
           timeStr: timeStr,
           startTime: timeStr,
           endTime: "",
-          subtitle: `EXAM: ${exam.title}`,
+          subtitle: `${exam.title}`,
           rawData: { exam, subject }
         });
       }
