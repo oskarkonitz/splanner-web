@@ -1,3 +1,4 @@
+// ScheduleView.jsx
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useData } from '../context/DataContext'
 import { supabase } from '../api/supabase' 
@@ -6,7 +7,7 @@ import EventFormModal from '../components/EventFormModal'
 import SubjectFormModal from '../components/SubjectFormModal'
 import NoteEditorModal from '../components/NoteEditorModal' 
 import MinecraftNotebook from '../components/MinecraftNotebook' 
-import HomeworkFormModal from '../components/HomeworkFormModal' // ZAAKTUALIZOWANY IMPORT
+import HomeworkFormModal from '../components/HomeworkFormModal'
 
 const START_HOUR = 0;
 const END_HOUR = 24;
@@ -42,7 +43,7 @@ export default function ScheduleView({ onBack }) {
     subjects, scheduleEntries, exams, customEvents, cancellations, 
     semesters, eventLists, deleteExam, deleteCustomEvent,
     scheduleNotes, saveScheduleNote, cancelClass, fetchDashboardData,
-    assignments, deleteAssignment // NOWE DANE Z CONTEXTU
+    assignments, deleteAssignment
   } = useData();
 
   const [currentWeekMonday, setCurrentWeekMonday] = useState(() => getMonday(new Date()));
@@ -57,7 +58,7 @@ export default function ScheduleView({ onBack }) {
   const [showExamForm, setShowExamForm] = useState(false);
   const [showEventForm, setShowEventForm] = useState(false);
   const [showSubjectForm, setShowSubjectForm] = useState(false);
-  const [showHomeworkForm, setShowHomeworkForm] = useState(false); // NOWY STAN MODALU
+  const [showHomeworkForm, setShowHomeworkForm] = useState(false);
   const [formInitialData, setFormInitialData] = useState(null);
   
   const [noteModalData, setNoteModalData] = useState(null);
@@ -229,7 +230,7 @@ export default function ScheduleView({ onBack }) {
 
     // 3. PRACE DOMOWE
     (assignments || []).forEach(hw => {
-      if (hw.type !== 'homework') return; // upewnienie sie ze to tylko prace domowe
+      if (hw.type !== 'homework') return;
       const subject = subjectsCache[hw.subject_id];
       if (!subject) return;
       if (selectedSemesters.size > 0 && !selectedSemesters.has(subject.semester_id)) return;
@@ -382,7 +383,6 @@ export default function ScheduleView({ onBack }) {
         c.startTime.substring(0, 5) === hwTime
       );
       
-      // Fallback jeśli czas został zmieniony, szukamy jakichkolwiek zajęć tego dnia z tego przedmiotu
       if (!matchingClass) {
           matchingClass = classBlocks.find(c => 
             c.rawData.entry.subject_id === hw.subject_id &&
@@ -667,9 +667,9 @@ export default function ScheduleView({ onBack }) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#2b2b2b] text-white relative">
+    <div className="flex flex-col h-full bg-[#121212] md:bg-[#1c1c1e] text-white relative">
       
-      <header className="flex flex-wrap items-center justify-between p-4 pt-[calc(env(safe-area-inset-top)+1rem)] border-b border-gray-800 gap-2 sm:gap-4 shrink-0">
+      <header className="flex flex-wrap items-center justify-between p-4 pt-[calc(env(safe-area-inset-top)+1rem)] border-b border-gray-800 gap-2 sm:gap-4 shrink-0 bg-[#1c1c1e]">
         <div className="flex items-center gap-2 sm:gap-4 min-w-0">
           <h1 className="text-xl md:text-3xl font-bold hidden md:block truncate">Schedule</h1>
           
@@ -754,7 +754,7 @@ export default function ScheduleView({ onBack }) {
       </header>
 
       {/* MOBILE AGENDA */}
-      <div className="md:hidden flex flex-col flex-1 overflow-hidden bg-[#2b2b2b]">
+      <div className="md:hidden flex flex-col flex-1 overflow-hidden bg-[#121212]">
         <div className="flex justify-between sm:justify-start overflow-x-auto gap-1 sm:gap-3 px-2 sm:px-4 py-2 sm:py-3 bg-[#1c1c1e] border-b border-gray-800 scrollbar-hide shrink-0">
           {weekDates.map((date, i) => {
             const dateStr = toDateString(date);
@@ -767,7 +767,7 @@ export default function ScheduleView({ onBack }) {
                 className={`flex flex-col items-center justify-center flex-1 sm:flex-none sm:min-w-[50px] py-1.5 sm:py-2 rounded-xl transition-colors ${isSelected ? 'bg-[#3498db] text-white shadow-md' : 'bg-transparent text-gray-400'}`}
               >
                 <span className={`text-[10px] sm:text-xs font-semibold ${isSelected ? 'text-white' : 'text-gray-500'}`}>{DAYS[i].toUpperCase()}</span>
-                <span className={`text-lg sm:text-xl font-bold mt-0.5 sm:mt-1 ${isSelected ? 'text-white' : (isToday ? 'text-[#3498db]' : 'text-gray-300')}`}>
+                <span className={`text-lg sm:text-xl font-bold mt-0.5 sm:mt-1 ${isSelected ? 'text-white' : (isToday ? 'text-[#3498db]' : 'text-white')}`}>
                   {date.getDate()}
                 </span>
               </button>
@@ -883,16 +883,16 @@ export default function ScheduleView({ onBack }) {
       </div>
 
       {/* DESKTOP CALENDAR */}
-      <main className="hidden md:flex flex-1 overflow-auto bg-[#2b2b2b]" ref={scrollRef}>
+      <main className="hidden md:flex flex-1 overflow-auto bg-[#1c1c1e]" ref={scrollRef}>
         <div className="min-w-[800px] flex flex-col h-full w-full">
-          <div className="flex border-b border-white/5 sticky top-0 z-20 bg-[#2b2b2b]">
+          <div className="flex border-b border-white/5 sticky top-0 z-20 bg-[#1c1c1e]">
             <div className="w-16 flex-shrink-0"></div>
             {weekDates.map((date, i) => {
               const isToday = toDateString(date) === todayStr;
               return (
                 <div key={i} className="flex-1 flex flex-col items-center py-2 border-l border-white/5">
-                  <span className={`text-xs font-bold uppercase ${isToday ? 'text-[#3498db]' : 'text-gray-500'}`}>{DAYS[i]}</span>
-                  <span className={`text-xl font-bold ${isToday ? 'text-white bg-[#3498db] w-8 h-8 rounded-full flex items-center justify-center' : 'text-gray-800 dark:text-gray-200 mt-1'}`}>
+                  <span className={`text-xs font-bold uppercase ${isToday ? 'text-[#3498db]' : 'text-gray-400'}`}>{DAYS[i]}</span>
+                  <span className={`text-xl font-bold ${isToday ? 'text-white bg-[#3498db] w-8 h-8 rounded-full flex items-center justify-center' : 'text-white mt-1'}`}>
                     {date.getDate()}
                   </span>
                 </div>
@@ -901,9 +901,9 @@ export default function ScheduleView({ onBack }) {
           </div>
 
           <div className="flex relative w-full" style={{ height: `${(END_HOUR - START_HOUR) * PX_PER_HOUR}px` }}>
-            <div className="w-16 flex-shrink-0 relative border-r border-white/5 bg-[#2b2b2b] z-10">
+            <div className="w-16 flex-shrink-0 relative border-r border-white/5 bg-[#1c1c1e] z-10">
               {Array.from({ length: END_HOUR - START_HOUR + 1 }).map((_, i) => (
-                <div key={i} className="absolute w-full text-right pr-2 text-xs text-gray-500 font-medium -translate-y-1/2" style={{ top: i * PX_PER_HOUR }}>
+                <div key={i} className="absolute w-full text-right pr-2 text-xs text-gray-400 font-medium -translate-y-1/2" style={{ top: i * PX_PER_HOUR }}>
                   {`${String(START_HOUR + i).padStart(2, '0')}:00`}
                 </div>
               ))}
@@ -912,6 +912,10 @@ export default function ScheduleView({ onBack }) {
             <div className="flex-1 flex relative">
               {Array.from({ length: END_HOUR - START_HOUR }).map((_, i) => (
                 <div key={i} className="absolute w-full border-t border-white/5 pointer-events-none" style={{ top: (i + 1) * PX_PER_HOUR }}></div>
+              ))}
+
+              {Array.from({ length: 7 }).map((_, i) => (
+                <div key={i} className="flex-1 relative pointer-events-none"></div>
               ))}
 
               {(() => {
@@ -1029,11 +1033,11 @@ export default function ScheduleView({ onBack }) {
                             style={{ height: textHeight }}
                           >
                             <div className="flex justify-between items-start">
-                              <span className="text-[10px] font-bold text-gray-900 dark:text-white leading-tight mb-0.5 whitespace-nowrap overflow-hidden text-ellipsis">{block.title}</span>
+                              <span className="text-[10px] font-bold text-white leading-tight mb-0.5 whitespace-nowrap overflow-hidden text-ellipsis">{block.title}</span>
                             </div>
 
-                            <span className="text-[9px] font-medium text-gray-800 dark:text-gray-300 leading-tight whitespace-nowrap overflow-hidden text-ellipsis">{block.timeStr}</span>
-                            {block.subtitle && <span className="text-[9px] font-medium text-gray-800 dark:text-gray-300 truncate mt-0.5">{block.subtitle}</span>}
+                            <span className="text-[9px] font-medium text-white/90 leading-tight whitespace-nowrap overflow-hidden text-ellipsis">{block.timeStr}</span>
+                            {block.subtitle && <span className="text-[9px] font-medium text-white/80 truncate mt-0.5">{block.subtitle}</span>}
                           </div>
                         )}
                         
@@ -1094,7 +1098,6 @@ export default function ScheduleView({ onBack }) {
 
                         {/* PRACA DOMOWA */}
                         {segment.isLastSegment && block.associatedHomeworks && block.associatedHomeworks.map((hwBlock, hwIdx) => {
-                          // Jeśli jest notatka, ikony prac domowych układają się od prawej z przesunięciem o 24px per element (zaczynając od 28px jeśli jest notatka, albo 4px jeśli jej nie ma)
                           const rightPx = (block.note ? 28 : 4) + (hwIdx * 24);
 
                           return (
@@ -1175,7 +1178,7 @@ export default function ScheduleView({ onBack }) {
                   type="text" 
                   value={categoryForm.name}
                   onChange={e => setCategoryForm({...categoryForm, name: e.target.value})}
-                  className="w-full bg-[#2b2b2b] border border-gray-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-[#3498db]"
+                  className="w-full bg-[#121212] border border-gray-700 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-[#3498db]"
                   placeholder="Category Name"
                 />
               </div>
@@ -1230,7 +1233,6 @@ export default function ScheduleView({ onBack }) {
         onClose={() => setShowSubjectForm(false)} 
       />
 
-      {/* NOWY MODAL PRACY DOMOWEJ */}
       <HomeworkFormModal 
         isOpen={showHomeworkForm} 
         initialData={formInitialData} 

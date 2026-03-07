@@ -145,7 +145,7 @@ export default function AchievementsView({ onBack }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 md:relative md:inset-auto md:z-auto flex flex-col h-full bg-[#2b2b2b] text-white">
+    <div className="fixed inset-0 z-50 md:relative md:inset-auto md:z-auto flex flex-col h-full bg-[#1c1c1e] text-white">
       {/* HEADER */}
       <header className="flex flex-col px-4 pb-4 pt-[calc(env(safe-area-inset-top)+1rem)] border-b border-gray-800 shrink-0 bg-[#1c1c1e]">
         <div className="flex items-center gap-3">
@@ -183,7 +183,7 @@ export default function AchievementsView({ onBack }) {
             const showTracker = group.isGroup || group.baseId === 'limit_breaker';
 
             return (
-              <div key={group.baseId} className="bg-[#1c1c1e] rounded-2xl overflow-hidden shadow-sm border border-white/5 transition-all">
+              <div key={group.baseId} className="bg-[#2b2b2b] rounded-2xl overflow-hidden shadow-sm border border-white/5 transition-all">
                 
                 {/* Wiersz Grupy (Główna Karta) */}
                 <button 
