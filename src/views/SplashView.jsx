@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
+import { useData } from '../context/DataContext'
 
 export default function SplashView({ onFinish, videoUrl }) {
-  // Stany odpowiadające Twoim ze Swifta
+  const { isLoading } = useData()
   const [statusText, setStatusText] = useState("Initializing...")
   const [progressValue, setProgressValue] = useState(0)
   const [textOpacity, setTextOpacity] = useState(1) // 1 = widoczny, 0 = ukryty
@@ -11,49 +12,56 @@ export default function SplashView({ onFinish, videoUrl }) {
   // Stan do płynnego znikania wideo
   const [videoOpacity, setVideoOpacity] = useState(1)
 
+  // Faza 1: Uruchomienie Splasha w tym samym czasie co ładują się dane
   useEffect(() => {
-    // Jeżeli dostaliśmy wideo, nie odpalaj timerów z logiem
     if (videoUrl) return;
 
-    // Start - 0s
-    setTimeout(() => {
-      setProgressValue(20)
-    }, 50)
+    setProgressValue(30)
+    setStatusText("Loading data...")
 
-    // Etap 1 - 0.5s
-    setTimeout(() => {
-      setStatusText("Loading data...")
-      setProgressValue(65)
-    }, 200)
-
-    // Etap 2 - 1.4s
-    setTimeout(() => {
-      setStatusText("Preparing dashboard...")
-      setProgressValue(95)
-    }, 700)
-
-    // Etap 3 (Finisz) - 2.2s
-    setTimeout(() => {
-      setStatusText("Ready!")
-      setProgressValue(100)
-    }, 500)
-
-    // Wybuch i ukrycie tekstu - 2.5s
-    setTimeout(() => {
-      setTextOpacity(0)
+    // Mały update paska, żeby interfejs żył dla wolniejszych połączeń
+    const timer = setTimeout(() => {
+      if (isLoading) {
+         setProgressValue(65)
+         setStatusText("Syncing dashboard...")
+      }
     }, 600)
 
-    // Powiększenie loga (Blast off) - 2.7s
-    setTimeout(() => {
+    return () => clearTimeout(timer)
+  }, [videoUrl, isLoading])
+
+  // Faza 2: Gotowość (kiedy pierwsza partia danych z DataContext się załadowała)
+  useEffect(() => {
+    if (videoUrl || isLoading) return; 
+
+    setStatusText("Preparing dashboard...")
+    setProgressValue(90)
+
+    const t1 = setTimeout(() => {
+      setStatusText("Ready!")
+      setProgressValue(100)
+    }, 400)
+
+    const t2 = setTimeout(() => {
+      setTextOpacity(0)
+    }, 800)
+
+    const t3 = setTimeout(() => {
       setFinalScale(15)
       setFinalOpacity(0)
-    }, 1000)
+    }, 1200)
 
-    // Zakończenie splasha - 3.1s (po animacji wybuchu)
-    setTimeout(() => {
+    const t4 = setTimeout(() => {
       onFinish()
-    }, 3100)
-  }, [onFinish, videoUrl])
+    }, 1700)
+
+    return () => {
+      clearTimeout(t1)
+      clearTimeout(t2)
+      clearTimeout(t3)
+      clearTimeout(t4)
+    }
+  }, [isLoading, videoUrl, onFinish])
 
   // Funkcja obsługująca koniec filmu (lub pominięcie) z płynnym przejściem
   const handleVideoEnd = () => {

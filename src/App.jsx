@@ -194,47 +194,47 @@ function App() {
 
   return (
     <div className="bg-[#2b2b2b] min-h-screen text-white relative flex flex-col">
-      <div className="flex-1 flex flex-col relative">
-        {!session ? (
-          <div className="flex-1 flex flex-col justify-center relative">
-            
-            {maintenanceActive && (
-              <div className="absolute top-[calc(env(safe-area-inset-top)+1.5rem)] left-0 w-full px-6 flex justify-center z-50 pointer-events-none">
-                <div className="bg-yellow-500 text-black px-5 py-4 rounded-2xl shadow-2xl w-full max-w-sm text-center text-sm font-bold pointer-events-auto border border-yellow-400">
-                  🚧 System is under maintenance.<br />Only administrators can log in.
-                </div>
+      {!session ? (
+        <div className="flex-1 flex flex-col justify-center relative">
+          
+          {maintenanceActive && (
+            <div className="absolute top-[calc(env(safe-area-inset-top)+1.5rem)] left-0 w-full px-6 flex justify-center z-50 pointer-events-none">
+              <div className="bg-yellow-500 text-black px-5 py-4 rounded-2xl shadow-2xl w-full max-w-sm text-center text-sm font-bold pointer-events-auto border border-yellow-400">
+                🚧 System is under maintenance.<br />Only administrators can log in.
               </div>
-            )}
-
-            <LoginView registrationEnabled={registrationEnabled} />
-          </div>
-        ) : isMaintenanceBlocked ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center animate-in fade-in zoom-in-95 duration-500">
-            <div className="bg-[#1c1c1e] p-10 rounded-3xl w-full max-w-md shadow-2xl border border-white/10 flex flex-col items-center">
-              <span className="text-6xl mb-6 drop-shadow-lg">🚧</span>
-              <h2 className="text-2xl font-bold mb-2">Under Maintenance</h2>
-              <p className="text-gray-400 mb-8 text-sm leading-relaxed">
-                We are currently updating SPlanner to bring you new features and improvements. Please check back later!
-              </p>
-              <button
-                onClick={() => supabase.auth.signOut()}
-                className="px-6 py-2.5 bg-white/5 border border-gray-700 hover:bg-white/10 text-white rounded-xl transition-colors font-medium text-sm w-full"
-              >
-                Sign Out
-              </button>
             </div>
-          </div>
-        ) : (
-          <DataProvider>
-            <HomeView />
-          </DataProvider>
-        )}
-      </div>
+          )}
 
-      {showSplash && !isMaintenanceBlocked && (
-        <div className="absolute inset-0 z-50">
-          <SplashView onFinish={() => setShowSplash(false)} videoUrl={customVideoUrl} />
+          <LoginView registrationEnabled={registrationEnabled} />
         </div>
+      ) : isMaintenanceBlocked ? (
+        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center animate-in fade-in zoom-in-95 duration-500">
+          <div className="bg-[#1c1c1e] p-10 rounded-3xl w-full max-w-md shadow-2xl border border-white/10 flex flex-col items-center">
+            <span className="text-6xl mb-6 drop-shadow-lg">🚧</span>
+            <h2 className="text-2xl font-bold mb-2">Under Maintenance</h2>
+            <p className="text-gray-400 mb-8 text-sm leading-relaxed">
+              We are currently updating SPlanner to bring you new features and improvements. Please check back later!
+            </p>
+            <button
+              onClick={() => supabase.auth.signOut()}
+              className="px-6 py-2.5 bg-white/5 border border-gray-700 hover:bg-white/10 text-white rounded-xl transition-colors font-medium text-sm w-full"
+            >
+              Sign Out
+            </button>
+          </div>
+        </div>
+      ) : (
+        <DataProvider>
+          <div className="flex-1 flex flex-col relative">
+            <HomeView />
+          </div>
+
+          {showSplash && !isMaintenanceBlocked && (
+            <div className="absolute inset-0 z-50">
+              <SplashView onFinish={() => setShowSplash(false)} videoUrl={customVideoUrl} />
+            </div>
+          )}
+        </DataProvider>
       )}
     </div>
   )

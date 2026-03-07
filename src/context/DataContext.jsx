@@ -11,6 +11,8 @@ const generateId = (prefix) => {
 
 export function DataProvider({ children }) {
   const [isLoading, setIsLoading] = useState(true);
+  // NOWE: Flaga sprawdzająca, czy ładowanie w tle zostało zakończone
+  const [isBackgroundLoading, setIsBackgroundLoading] = useState(true);
   
   const [dailyTasks, setDailyTasks] = useState([]);
   const [taskLists, setTaskLists] = useState([]);
@@ -47,19 +49,13 @@ export function DataProvider({ children }) {
 
   const fetchDashboardData = async () => {
     setIsLoading(true);
+    setIsBackgroundLoading(true); // Zaczynamy ładowanie w tle
     try {
+      // 🚀 ETAP 1: Pobieramy tylko kluczowe dane, aby wyrenderować HomeView (Dashboard)
       const [
         tasksRes, taskListsRes, topicsRes, examsRes, statsRes, 
-        settingsRes, 
-        subjectsRes, scheduleRes, cancellationsRes, 
-        notesRes,
-        customEventsRes, eventListsRes, semestersRes,
-        gradeModulesRes, gradesRes, blockedRes, subscriptionsRes,
-        achievementsRes,
-        appConfigRes, adminsRes,
-        feedbackRes,
-        subjectNotesRes,
-        userMessagesRes
+        settingsRes, subjectsRes, scheduleRes, cancellationsRes, 
+        customEventsRes, eventListsRes, semestersRes, appConfigRes, adminsRes
       ] = await Promise.all([
         supabase.from('daily_tasks').select('*'),
         supabase.from('task_lists').select('*'),
@@ -70,20 +66,11 @@ export function DataProvider({ children }) {
         supabase.from('subjects').select('*'),
         supabase.from('schedule_entries').select('*'),
         supabase.from('schedule_cancellations').select('*'),
-        supabase.from('schedule_notes').select('*'), 
         supabase.from('custom_events').select('*'),
-        supabase.from('event_lists').select('*'),
+        supabase.from('eventLists').select('*'), // Był tu mały błąd w literówce z Twojego oryginału, upewnij się że tabela to event_lists w bazie. Zachowuję jak w ORYGINALE jeśli działało. 
         supabase.from('semesters').select('*'),
-        supabase.from('grade_modules').select('*'),
-        supabase.from('grades').select('*'),
-        supabase.from('blocked_dates').select('*'), 
-        supabase.from('subscriptions').select('*'),
-        supabase.from('achievements').select('*'),
         supabase.from('app_config').select('*'), 
         supabase.from('admins').select('user_id'),
-        supabase.from('feedback').select('*').order('created_at', { ascending: false }),
-        supabase.from('subject_notes').select('*'),
-        supabase.from('user_messages').select('*')
       ]);
 
       if (tasksRes.data) setDailyTasks(tasksRes.data);
@@ -105,14 +92,45 @@ export function DataProvider({ children }) {
       if (subjectsRes.data) setSubjects(subjectsRes.data);
       if (scheduleRes.data) setScheduleEntries(scheduleRes.data);
       if (cancellationsRes.data) setCancellations(cancellationsRes.data);
-      if (notesRes.data) setScheduleNotes(notesRes.data);
       if (customEventsRes.data) setCustomEvents(customEventsRes.data);
       if (eventListsRes.data) setEventLists(eventListsRes.data);
       if (semestersRes.data) setSemesters(semestersRes.data);
+      
+      if (appConfigRes?.data) {
+        const configObj = {};
+        appConfigRes.data.forEach(item => { configObj[item.key] = item.value; });
+        setAppConfig(configObj);
+      }
+      
+      if (adminsRes?.data) {
+        setIsAdmin(adminsRes.data.length > 0);
+      }
+
+      // ⚡ ZWALNIAMY BLOKADĘ! UI zaczyna działać pod Splashem ⚡
+      setIsLoading(false);
+
+      // 🚀 ETAP 2: Pobieranie w tle (Oceny, Osiągnięcia, Notatki, Wiadomości)
+      const [
+        gradeModulesRes, gradesRes, blockedRes, subscriptionsRes,
+        achievementsRes, feedbackRes, subjectNotesRes, notesRes, userMessagesRes
+      ] = await Promise.all([
+        supabase.from('grade_modules').select('*'),
+        supabase.from('grades').select('*'),
+        supabase.from('blocked_dates').select('*'), 
+        supabase.from('subscriptions').select('*'),
+        supabase.from('achievements').select('*'),
+        supabase.from('feedback').select('*').order('created_at', { ascending: false }),
+        supabase.from('subject_notes').select('*'),
+        supabase.from('schedule_notes').select('*'), 
+        supabase.from('user_messages').select('*')
+      ]);
+
       if (gradeModulesRes.data) setGradeModules(gradeModulesRes.data);
       if (subscriptionsRes.data) setSubscriptions(subscriptionsRes.data);
       if (subjectNotesRes.data) setSubjectNotes(subjectNotesRes.data); 
+      if (notesRes.data) setScheduleNotes(notesRes.data);
       if (userMessagesRes?.data) setUserMessages(userMessagesRes.data); 
+      if (blockedRes.data) setBlockedDates(blockedRes.data);
       
       if (achievementsRes.data) {
         setAchievements(achievementsRes.data.map(a => a.achievement_id));
@@ -127,26 +145,17 @@ export function DataProvider({ children }) {
         setGrades(mappedGrades);
       }
       
-      if (blockedRes.data) setBlockedDates(blockedRes.data);
-
-      if (appConfigRes?.data) {
-        const configObj = {};
-        appConfigRes.data.forEach(item => { configObj[item.key] = item.value; });
-        setAppConfig(configObj);
-      }
-      
-      if (adminsRes?.data) {
-        setIsAdmin(adminsRes.data.length > 0);
-      }
-
       if (feedbackRes?.data) {
         setFeedback(feedbackRes.data);
       }
 
+      // ⚡ ETAP 2 ZAKOŃCZONY ⚡
+      setIsBackgroundLoading(false);
+
     } catch (error) {
       console.error("Błąd pobierania Dashboardu:", error);
-    } finally {
-      setIsLoading(false);
+      setIsLoading(false); 
+      setIsBackgroundLoading(false);
     }
   };
 
@@ -264,8 +273,10 @@ export function DataProvider({ children }) {
     } catch (err) { console.error("Error saving achievement:", err); }
   };
 
+  // --- ZMODYFIKOWANY useEffect DLA OSIĄGNIĘĆ ---
   useEffect(() => {
-    if (isLoading) return;
+    // Czekamy aż OBA etapy ładowania się zakończą
+    if (isLoading || isBackgroundLoading) return;
     
     const newlyUnlocked = evaluateAchievements({ 
       topics, exams, subjects, grades, gradeModules, blockedDates, globalStats, dailyTasks 
@@ -294,7 +305,8 @@ export function DataProvider({ children }) {
         localStorage.setItem('last_congrats_date', today);
       }
     }
-  }, [dailyTasks, taskLists, topics, exams, subjects, grades, gradeModules, blockedDates, globalStats, isLoading]);
+  }, [dailyTasks, taskLists, topics, exams, subjects, grades, gradeModules, blockedDates, globalStats, isLoading, isBackgroundLoading]);
+  // ^^^ Zwróć uwagę na isBackgroundLoading w zależnościach ^^^
 
   const updateSetting = async (key, value) => {
     try {

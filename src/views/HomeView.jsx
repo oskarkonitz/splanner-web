@@ -61,14 +61,6 @@ export default function HomeView() {
     userMessages, markMessageAsRead 
   } = useData()
 
-  const [todayProgress, setTodayProgress] = useState({ done: 0, total: 0 })
-  const [totalProgress, setTotalProgress] = useState({ done: 0, total: 0 })
-  const [nextExam, setNextExam] = useState(null)
-  const [nowNextItem, setNowNextItem] = useState(null)
-  const [upcomingToday, setUpcomingToday] = useState([])
-  const [focusTime, setFocusTime] = useState(0)
-  const [gpa, setGpa] = useState(0.0)
-
   const [isStandalone, setIsStandalone] = useState(false);
   const [isBannerDismissed, setIsBannerDismissed] = useState(false);
   
@@ -80,9 +72,237 @@ export default function HomeView() {
 
   const [laterTodayIndex, setLaterTodayIndex] = useState(0);
 
-  // --- STANY WYZWALAJĄCE SCROLL ---
   const [tasksNeedScroll, setTasksNeedScroll] = useState(false);
   const [shoppingNeedScroll, setShoppingNeedScroll] = useState(false);
+
+  // --- OPTYMALIZACJE OBLICZEŃ DASHBOARDU (Bez resetowania do 0 podczas refetchy) ---
+
+  const focusTime = useMemo(() => {
+    if (!globalStats) return 0;
+    const timeStat = globalStats.find(s => s.key === 'daily_study_time');
+    if (timeStat) {
+      const safeStringValue = String(timeStat.value).replace(/"/g, '');
+      return parseInt(safeStringValue) || 0;
+    }
+    return 0;
+  }, [globalStats]);
+
+  const { todayProgress, totalProgress } = useMemo(() => {
+    if (!dailyTasks || !topics) return { todayProgress: { done: 0, total: 0 }, totalProgress: { done: 0, total: 0 } };
+
+    const now = new Date();
+    const todayStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
+    const todayTasks = dailyTasks.filter(t => t.date === todayStr && t.list_id !== 'shopping') || [];
+    const todayTopics = topics.filter(t => t.scheduled_date === todayStr) || [];
+    
+    const tProgress = {
+      done: todayTasks.filter(t => t.status === 'done').length + todayTopics.filter(t => t.status === 'done').length,
+      total: todayTasks.length + todayTopics.length
+    };
+
+    const futureExams = (exams || []).filter(e => e.date >= todayStr);
+    const futureExamIDs = new Set(futureExams.map(e => e.id));
+    
+    const relevantTopics = (topics || []).filter(t => 
+      futureExamIDs.has(t.exam_id) || t.status !== 'done'
+    );
+    const relevantTasks = (dailyTasks || []).filter(t => 
+      (t.date && t.date >= todayStr) || t.status !== 'done'
+    );
+
+    const totProgress = {
+      done: relevantTopics.filter(t => t.status === 'done').length + relevantTasks.filter(t => t.status === 'done').length,
+      total: relevantTopics.length + relevantTasks.length
+    };
+
+    return { todayProgress: tProgress, totalProgress: totProgress };
+  }, [dailyTasks, topics, exams]);
+
+  const nextExam = useMemo(() => {
+    if (!exams) return null;
+    const now = new Date();
+    const todayStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+    const currentTotalMins = now.getHours() * 60 + now.getMinutes();
+    const switchSetting = settings?.next_exam_switch || settings?.next_exam_switch_hour || 'after_end';
+
+    const upcomingExams = exams
+      .filter(e => {
+        if (e.date > todayStr) return true;
+        if (e.date < todayStr) return false;
+        
+        if (switchSetting === 'after_end') {
+          if (!e.time) return true; 
+          const startMins = parseInt(e.time.split(':')[0]) * 60 + parseInt(e.time.split(':')[1]);
+          const endMins = startMins + 90;
+          return currentTotalMins < endMins;
+        } else {
+          const switchHour = parseInt(switchSetting);
+          if (!isNaN(switchHour)) {
+             return currentTotalMins < switchHour * 60;
+          }
+          return true; 
+        }
+      })
+      .sort((a, b) => {
+        if (a.date === b.date) return (a.time || "00:00").localeCompare(b.time || "00:00");
+        return a.date.localeCompare(b.date);
+      });
+      
+    return upcomingExams.length > 0 ? upcomingExams[0] : null;
+  }, [exams, settings]);
+
+  const { nowNextItem, upcomingToday } = useMemo(() => {
+    if (!scheduleEntries || !subjects) return { nowNextItem: null, upcomingToday: [] };
+
+    const now = new Date();
+    const currentTimeStr = now.toTimeString().substring(0, 5);
+    let foundNext = null;
+    let foundTodayList = [];
+    const selectedSemesterID = "ALL";
+
+    for (let offset = 0; offset < 7; offset++) {
+      const checkDate = new Date(now);
+      checkDate.setDate(now.getDate() + offset);
+      const checkDateStr = new Date(checkDate.getTime() - (checkDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+      const weekday = (checkDate.getDay() + 6) % 7; 
+      
+      let dailyItems = [];
+      
+      const dayClasses = (scheduleEntries || []).filter(entry => {
+        if (entry.day_of_week !== weekday) return false;
+        const subject = (subjects || []).find(s => s.id === entry.subject_id);
+        if (!subject) return false;
+        if (selectedSemesterID !== "ALL" && subject.semester_id !== selectedSemesterID) return false;
+        if (subject.start_datetime && subject.start_datetime.substring(0, 10) > checkDateStr) return false;
+        if (subject.end_datetime && subject.end_datetime.substring(0, 10) < checkDateStr) return false;
+        const isCancelled = (cancellations || []).some(c => c.entry_id === entry.id && c.date === checkDateStr);
+        if (isCancelled) return false;
+        if (offset === 0 && entry.end_time <= currentTimeStr) return false;
+        return true;
+      });
+      
+      for (const entry of dayClasses) {
+        const subject = subjects.find(s => s.id === entry.subject_id);
+        const roomStr = entry.room ? `Room ${entry.room}` : "";
+        const typeStr = entry.type ? entry.type : "Class";
+        dailyItems.push({ 
+          title: subject.name, subtitle: roomStr, 
+          startTime: entry.start_time, endTime: entry.end_time, 
+          typeStr, hexColor: subject.color || "#3498db", dateStr: checkDateStr,
+          subject: subject
+        });
+      }
+      
+      const dayEvents = (customEvents || []).filter(event => {
+        const isRec = event.is_recurring;
+        const sDate = event.date || event.start_date || "";
+        const eDate = event.end_date || sDate;
+        
+        if (!isRec) {
+          if (!sDate || checkDateStr < sDate || checkDateStr > eDate) return false;
+        } else {
+          if (event.day_of_week !== weekday) return false;
+          if (event.start_date && event.start_date > checkDateStr) return false;
+          if (event.end_date && event.end_date < checkDateStr) return false;
+        }
+        
+        let effectiveEnd = event.end_time;
+        if (checkDateStr < eDate) effectiveEnd = "23:59";
+        if (offset === 0 && effectiveEnd <= currentTimeStr) return false;
+        return true;
+      });
+      
+      for (const event of dayEvents) {
+        let listName = "Event";
+        if (event.list_id) {
+          const list = (eventLists || []).find(l => l.id === event.list_id);
+          if (list) listName = list.name;
+        }
+        
+        const sDate = event.date || event.start_date || "";
+        const eDate = event.end_date || sDate;
+        let effectiveStart = event.start_time;
+        let effectiveEnd = event.end_time;
+        
+        if (checkDateStr > sDate) effectiveStart = "00:00";
+        if (checkDateStr < eDate) effectiveEnd = "23:59";
+        
+        dailyItems.push({ 
+          title: event.title, subtitle: "", 
+          startTime: effectiveStart, endTime: effectiveEnd, 
+          typeStr: listName, hexColor: event.color || "#3498db", dateStr: checkDateStr,
+          subject: null
+        });
+      }
+      
+      if (dailyItems.length > 0) {
+        dailyItems.sort((a, b) => a.startTime.localeCompare(b.startTime));
+        if (offset === 0) {
+          foundTodayList = dailyItems;
+          foundNext = dailyItems[0];
+        } else if (!foundNext) {
+          foundNext = dailyItems[0];
+          break; 
+        }
+      }
+    }
+    return { nowNextItem: foundNext, upcomingToday: foundTodayList };
+  }, [subjects, scheduleEntries, cancellations, customEvents, eventLists, semesters]);
+
+  const gpa = useMemo(() => {
+    if (!subjects) return 0.0;
+    const convertToGradeScale = (val) => {
+      if (val <= 5.0) return val;
+      if (val >= 90) return 5.0;
+      if (val >= 80) return 4.5;
+      if (val >= 70) return 4.0;
+      if (val >= 60) return 3.5;
+      if (val >= 50) return 3.0;
+      return 2.0;
+    };
+    
+    const currentSem = (semesters || []).find(s => s.is_current);
+    const filteredSubjects = currentSem ? subjects.filter(s => s.semester_id === currentSem.id) : subjects;
+    let totalECTS = 0.0;
+    let weightedSum = 0.0;
+    
+    for (const sub of filteredSubjects) {
+      const modules = (gradeModules || []).filter(m => m.subject_id === sub.id);
+      const allGrades = (grades || []).filter(g => g.subject_id === sub.id);
+      let subWeightedScore = 0.0;
+      let subGradedWeight = 0.0;
+      
+      for (const mod of modules) {
+        const modGrades = allGrades.filter(g => g.module_id === mod.id);
+        if (modGrades.length > 0) {
+          let sumW = 0.0;
+          let wSum = 0.0;
+          for (const g of modGrades) {
+            const w = g.weight || 0.0;
+            sumW += w;
+            wSum += g.value * w;
+          }
+          if (sumW > 0) {
+            const modAvg = wSum / sumW;
+            const modFactor = (mod.weight || 0.0) / 100.0;
+            subWeightedScore += modAvg * modFactor;
+            subGradedWeight += modFactor;
+          }
+        }
+      }
+      if (subGradedWeight > 0) {
+        const percent = subWeightedScore / subGradedWeight;
+        const scale = convertToGradeScale(percent);
+        const ects = sub.weight || 0.0;
+        weightedSum += scale * ects;
+        totalECTS += ects;
+      }
+    }
+    return totalECTS === 0 ? 0 : (weightedSum / totalECTS);
+  }, [subjects, semesters, gradeModules, grades]);
+
+  // --- POZOSTAŁA CZĘŚĆ KOMPONENTU ---
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -178,7 +398,7 @@ export default function HomeView() {
     }, 400);
   };
 
-  const mainTabs = ["Dashboard", "Plan", "Todo", "Schedule"];
+  const mainTabs = ["Dashboard", "Study Plan", "Todo", "Schedule"];
   const moreTabs = ["Task History", "Exam Database & Archive", "Achievements", "Subjects & Semesters", "Grades", "Subscriptions"];
 
   useEffect(() => {
@@ -214,213 +434,6 @@ export default function HomeView() {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
     return () => clearInterval(timer)
   }, [])
-
-  useEffect(() => {
-    if (isLoading || !dailyTasks) return;
-
-    const now = new Date();
-    const todayStr = new Date(now.getTime() - (now.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-    const currentTimeStr = now.toTimeString().substring(0, 5);
-
-    const timeStat = globalStats?.find(s => s.key === 'daily_study_time');
-    if (timeStat) {
-      const safeStringValue = String(timeStat.value).replace(/"/g, '');
-      setFocusTime(parseInt(safeStringValue) || 0);
-    }
-
-    const todayTasks = dailyTasks?.filter(t => t.date === todayStr && t.list_id !== 'shopping') || [];
-    const todayTopics = topics?.filter(t => t.scheduled_date === todayStr) || [];
-    setTodayProgress({
-      done: todayTasks.filter(t => t.status === 'done').length + todayTopics.filter(t => t.status === 'done').length,
-      total: todayTasks.length + todayTopics.length
-    });
-
-    const futureExams = (exams || []).filter(e => e.date >= todayStr);
-    const futureExamIDs = new Set(futureExams.map(e => e.id));
-    
-    const relevantTopics = (topics || []).filter(t => 
-      futureExamIDs.has(t.exam_id) || t.status !== 'done'
-    );
-    
-    const relevantTasks = (dailyTasks || []).filter(t => 
-      (t.date && t.date >= todayStr) || t.status !== 'done'
-    );
-
-    setTotalProgress({
-      done: relevantTopics.filter(t => t.status === 'done').length + relevantTasks.filter(t => t.status === 'done').length,
-      total: relevantTopics.length + relevantTasks.length
-    });
-
-    const switchSetting = settings?.next_exam_switch || settings?.next_exam_switch_hour || 'after_end';
-    const currentTotalMins = now.getHours() * 60 + now.getMinutes();
-
-    const upcomingExams = (exams || [])
-      .filter(e => {
-        if (e.date > todayStr) return true;
-        if (e.date < todayStr) return false;
-        
-        if (switchSetting === 'after_end') {
-          if (!e.time) return true; 
-          const startMins = parseInt(e.time.split(':')[0]) * 60 + parseInt(e.time.split(':')[1]);
-          const endMins = startMins + 90; // +1.5h
-          return currentTotalMins < endMins;
-        } else {
-          const switchHour = parseInt(switchSetting);
-          if (!isNaN(switchHour)) {
-             return currentTotalMins < switchHour * 60;
-          }
-          return true; 
-        }
-      })
-      .sort((a, b) => {
-        if (a.date === b.date) return (a.time || "00:00").localeCompare(b.time || "00:00");
-        return a.date.localeCompare(b.date);
-      });
-    setNextExam(upcomingExams.length > 0 ? upcomingExams[0] : null);
-
-    let foundNext = null;
-    let foundTodayList = [];
-    const selectedSemesterID = "ALL";
-
-    for (let offset = 0; offset < 7; offset++) {
-      const checkDate = new Date(now);
-      checkDate.setDate(now.getDate() + offset);
-      const checkDateStr = new Date(checkDate.getTime() - (checkDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-      const weekday = (checkDate.getDay() + 6) % 7; 
-      
-      let dailyItems = [];
-      
-      const dayClasses = (scheduleEntries || []).filter(entry => {
-        if (entry.day_of_week !== weekday) return false;
-        const subject = (subjects || []).find(s => s.id === entry.subject_id);
-        if (!subject) return false;
-        if (selectedSemesterID !== "ALL" && subject.semester_id !== selectedSemesterID) return false;
-        if (subject.start_datetime && subject.start_datetime.substring(0, 10) > checkDateStr) return false;
-        if (subject.end_datetime && subject.end_datetime.substring(0, 10) < checkDateStr) return false;
-        const isCancelled = (cancellations || []).some(c => c.entry_id === entry.id && c.date === checkDateStr);
-        if (isCancelled) return false;
-        if (offset === 0 && entry.end_time <= currentTimeStr) return false;
-        return true;
-      });
-      
-      for (const entry of dayClasses) {
-        const subject = subjects.find(s => s.id === entry.subject_id);
-        const roomStr = entry.room ? `Room ${entry.room}` : "";
-        const typeStr = entry.type ? entry.type : "Class";
-        dailyItems.push({ 
-          title: subject.name, subtitle: roomStr, 
-          startTime: entry.start_time, endTime: entry.end_time, 
-          typeStr, hexColor: subject.color || "#3498db", dateStr: checkDateStr,
-          subject: subject
-        });
-      }
-      
-      const dayEvents = (customEvents || []).filter(event => {
-        const isRec = event.is_recurring;
-        const sDate = event.date || event.start_date || "";
-        const eDate = event.end_date || sDate;
-        
-        if (!isRec) {
-          if (!sDate || checkDateStr < sDate || checkDateStr > eDate) return false;
-        } else {
-          if (event.day_of_week !== weekday) return false;
-          if (event.start_date && event.start_date > checkDateStr) return false;
-          if (event.end_date && event.end_date < checkDateStr) return false;
-        }
-        
-        let effectiveEnd = event.end_time;
-        if (checkDateStr < eDate) effectiveEnd = "23:59";
-        if (offset === 0 && effectiveEnd <= currentTimeStr) return false;
-        return true;
-      });
-      
-      for (const event of dayEvents) {
-        let listName = "Event";
-        if (event.list_id) {
-          const list = (eventLists || []).find(l => l.id === event.list_id);
-          if (list) listName = list.name;
-        }
-        
-        const sDate = event.date || event.start_date || "";
-        const eDate = event.end_date || sDate;
-        let effectiveStart = event.start_time;
-        let effectiveEnd = event.end_time;
-        
-        if (checkDateStr > sDate) effectiveStart = "00:00";
-        if (checkDateStr < eDate) effectiveEnd = "23:59";
-        
-        dailyItems.push({ 
-          title: event.title, subtitle: "", 
-          startTime: effectiveStart, endTime: effectiveEnd, 
-          typeStr: listName, hexColor: event.color || "#3498db", dateStr: checkDateStr,
-          subject: null
-        });
-      }
-      
-      if (dailyItems.length > 0) {
-        dailyItems.sort((a, b) => a.startTime.localeCompare(b.startTime));
-        if (offset === 0) {
-          foundTodayList = dailyItems;
-          foundNext = dailyItems[0];
-        } else if (!foundNext) {
-          foundNext = dailyItems[0];
-          break; 
-        }
-      }
-    }
-    setNowNextItem(foundNext);
-    setUpcomingToday(foundTodayList);
-
-    const convertToGradeScale = (val) => {
-      if (val <= 5.0) return val;
-      if (val >= 90) return 5.0;
-      if (val >= 80) return 4.5;
-      if (val >= 70) return 4.0;
-      if (val >= 60) return 3.5;
-      if (val >= 50) return 3.0;
-      return 2.0;
-    };
-    
-    const currentSem = (semesters || []).find(s => s.is_current);
-    const filteredSubjects = currentSem ? (subjects || []).filter(s => s.semester_id === currentSem.id) : (subjects || []);
-    let totalECTS = 0.0;
-    let weightedSum = 0.0;
-    
-    for (const sub of filteredSubjects) {
-      const modules = (gradeModules || []).filter(m => m.subject_id === sub.id);
-      const allGrades = (grades || []).filter(g => g.subject_id === sub.id);
-      let subWeightedScore = 0.0;
-      let subGradedWeight = 0.0;
-      
-      for (const mod of modules) {
-        const modGrades = allGrades.filter(g => g.module_id === mod.id);
-        if (modGrades.length > 0) {
-          let sumW = 0.0;
-          let wSum = 0.0;
-          for (const g of modGrades) {
-            const w = g.weight || 0.0;
-            sumW += w;
-            wSum += g.value * w;
-          }
-          if (sumW > 0) {
-            const modAvg = wSum / sumW;
-            const modFactor = (mod.weight || 0.0) / 100.0;
-            subWeightedScore += modAvg * modFactor;
-            subGradedWeight += modFactor;
-          }
-        }
-      }
-      if (subGradedWeight > 0) {
-        const percent = subWeightedScore / subGradedWeight;
-        const scale = convertToGradeScale(percent);
-        const ects = sub.weight || 0.0;
-        weightedSum += scale * ects;
-        totalECTS += ects;
-      }
-    }
-    setGpa(totalECTS === 0 ? 0 : (weightedSum / totalECTS));
-
-  }, [isLoading, dailyTasks, topics, exams, globalStats, subjects, scheduleEntries, cancellations, customEvents, eventLists, semesters, gradeModules, grades, settings]);
 
   const todayTasksList = useMemo(() => {
     if (!dailyTasks || !topics) return [];
@@ -492,27 +505,24 @@ export default function HomeView() {
   const tasksScrollRef = useRef(null);
   const shoppingScrollRef = useRef(null);
 
-  // --- LOGIKA DO OBLICZANIA OVERFLOW TASKS W DOM ---
   useEffect(() => {
-    if (activeTab !== "Dashboard" || isLoading) return;
+    if (activeTab !== "Dashboard") return;
     const el = tasksScrollRef.current;
     if (el && el.firstElementChild) {
       setTasksNeedScroll(el.firstElementChild.scrollHeight > el.clientHeight);
     }
-  }, [todayTasksList, activeTab, isLoading]);
+  }, [todayTasksList, activeTab]);
 
-  // --- LOGIKA DO OBLICZANIA OVERFLOW SHOPPING W DOM ---
   useEffect(() => {
-    if (activeTab !== "Dashboard" || isLoading) return;
+    if (activeTab !== "Dashboard") return;
     const el = shoppingScrollRef.current;
     if (el && el.firstElementChild) {
       setShoppingNeedScroll(el.firstElementChild.scrollHeight > el.clientHeight);
     }
-  }, [shoppingItemsList, activeTab, isLoading]);
-
+  }, [shoppingItemsList, activeTab]);
 
   useEffect(() => {
-    if (activeTab !== "Dashboard" || isLoading || !tasksNeedScroll) return;
+    if (activeTab !== "Dashboard" || !tasksNeedScroll) return;
 
     const el = tasksScrollRef.current;
     if (!el) return;
@@ -545,10 +555,10 @@ export default function HomeView() {
       clearTimeout(timeoutId);
       if (animationFrameId) cancelAnimationFrame(animationFrameId);
     };
-  }, [todayTasksList, tasksNeedScroll, activeTab, isLoading]);
+  }, [todayTasksList, tasksNeedScroll, activeTab]);
 
   useEffect(() => {
-    if (activeTab !== "Dashboard" || isLoading || !shoppingNeedScroll) return;
+    if (activeTab !== "Dashboard" || !shoppingNeedScroll) return;
 
     const el = shoppingScrollRef.current;
     if (!el) return;
@@ -581,7 +591,7 @@ export default function HomeView() {
       clearTimeout(timeoutId);
       if (animationFrameId) cancelAnimationFrame(animationFrameId);
     };
-  }, [shoppingItemsList, shoppingNeedScroll, activeTab, isLoading]);
+  }, [shoppingItemsList, shoppingNeedScroll, activeTab]);
 
   const renderMenuBadge = (tabName) => {
     const mode = settings?.badge_mode || 'default';
@@ -619,7 +629,7 @@ export default function HomeView() {
       return <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-orange-500/20 text-orange-400">{todayPending}</span>;
     }
 
-    if (tabName === 'Plan') {
+    if (tabName === 'Study Plan') {
       const overdue = topics.filter(t => t.status === 'todo' && t.scheduled_date && t.scheduled_date < todayStr).length;
       const todayPending = topics.filter(t => t.status === 'todo' && t.scheduled_date === todayStr).length;
       const todayDone = topics.filter(t => t.status === 'done' && t.scheduled_date === todayStr).length;
@@ -743,7 +753,7 @@ export default function HomeView() {
     switch(tabName) {
       case "Dashboard":
         return <svg className="w-6 h-6" fill="none" stroke={stroke} strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>;
-      case "Plan":
+      case "Study Plan":
         return <svg className="w-6 h-6" fill="none" stroke={stroke} strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"></path></svg>;
       case "Todo":
         return <svg className="w-6 h-6" fill="none" stroke={stroke} strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>;
@@ -938,7 +948,7 @@ export default function HomeView() {
                 >
                   <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Now / Next</span>
                   <div className="flex-1 flex items-center justify-center text-green-400 font-semibold text-lg">
-                    {isLoading ? "Loading..." : "No events ahead"}
+                    {isLoading && (!scheduleEntries || scheduleEntries.length === 0) ? "Loading..." : "No events ahead"}
                   </div>
                 </div>
               )}
@@ -948,7 +958,7 @@ export default function HomeView() {
           {layoutConfig.next_exam && (
             <div className="break-inside-avoid mb-6 inline-block w-full">
               <div 
-                onClick={() => setActiveTab("Plan")} 
+                onClick={() => setActiveTab("Study Plan")} 
                 className="bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] cursor-pointer hover:bg-white/5 transition-colors"
               >
                 <div className="flex justify-between items-center mb-4">
@@ -961,7 +971,7 @@ export default function HomeView() {
                 </div>
                 
                 <div className="flex-1 flex items-center justify-center text-center">
-                  {isLoading ? (
+                  {isLoading && (!exams || exams.length === 0) ? (
                     <span className="text-gray-400 font-medium">Loading...</span>
                   ) : (
                     nextExam ? (
@@ -1009,7 +1019,7 @@ export default function HomeView() {
                   ref={tasksScrollRef}
                   className="flex-1 overflow-hidden flex flex-col relative"
                 >
-                  {isLoading ? (
+                  {isLoading && todayTasksList.length === 0 && (!dailyTasks || dailyTasks.length === 0) ? (
                     <div className="flex-1 flex items-center justify-center text-gray-400 font-medium">Loading...</div>
                   ) : todayTasksList.length > 0 ? (
                     <>
@@ -1061,7 +1071,7 @@ export default function HomeView() {
                   ref={shoppingScrollRef}
                   className="flex-1 overflow-hidden flex flex-col relative"
                 >
-                  {isLoading ? (
+                  {isLoading && shoppingItemsList.length === 0 && (!dailyTasks || dailyTasks.length === 0) ? (
                     <div className="flex-1 flex items-center justify-center text-gray-400 font-medium">Loading...</div>
                   ) : !settings?.main_shopping_list_id ? ( 
                     <div className="flex-1 flex flex-col items-center justify-center text-gray-500 text-center">
@@ -1116,7 +1126,7 @@ export default function HomeView() {
                 </div>
                 
                 <div className="flex-1 flex flex-col justify-center">
-                  {isLoading ? (
+                  {isLoading && !nextSubscription && (!subscriptions || subscriptions.length === 0) ? (
                     <div className="flex items-center justify-center text-gray-400 font-medium h-full">Loading...</div>
                   ) : nextSubscription ? (
                     <div className="flex justify-between items-center w-full gap-4">
@@ -1150,7 +1160,7 @@ export default function HomeView() {
               <div className="bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col justify-between min-h-[140px]">
                 <span className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Today's Focus</span>
                 <div className="text-5xl font-bold text-indigo-400 mt-2">
-                  {isLoading ? "--:--" : formatTime(focusTime)}
+                  {isLoading && (!globalStats || globalStats.length === 0) ? "--:--" : formatTime(focusTime)}
                 </div>
               </div>
             </div>
@@ -1164,7 +1174,7 @@ export default function HomeView() {
               >
                 <span className="text-sm font-semibold text-gray-400 uppercase tracking-wider">Current GPA</span>
                 <div className="text-5xl font-bold text-[#f1c40f] mt-2">
-                  {isLoading ? "--" : (gpa > 0 ? gpa.toFixed(2) : "0.00")}
+                  {isLoading && (!subjects || subjects.length === 0) ? "--" : (gpa > 0 ? gpa.toFixed(2) : "0.00")}
                 </div>
               </div>
             </div>
@@ -1276,7 +1286,7 @@ export default function HomeView() {
           <ScheduleView onBack={() => setActiveTab("Dashboard")} />
         ) : activeTab === "Exam Database & Archive" ? (
           <ArchiveView onBack={() => setActiveTab("More")} />
-        ) : activeTab === "Plan" ? (
+        ) : activeTab === "Study Plan" ? (
           <PlanView onBack={() => setActiveTab("Dashboard")} />
         ) : activeTab === "Todo" ? (
           <TodoView 
@@ -1367,7 +1377,7 @@ export default function HomeView() {
               </div>
             )}
 
-            {activeTab !== "Dashboard" && activeTab !== "More" && activeTab !== "Settings" && activeTab !== "Schedule" && activeTab !== "Exam Database & Archive" && activeTab !== "Plan" && activeTab !== "Todo" && activeTab !== "Task History" && activeTab !== "Subjects & Semesters" && activeTab !== "Grades" && activeTab !== "Subscriptions" && activeTab !== "Achievements" && activeTab !== "Admin" && activeTab !== "Feedback" && (
+            {activeTab !== "Dashboard" && activeTab !== "More" && activeTab !== "Settings" && activeTab !== "Schedule" && activeTab !== "Exam Database & Archive" && activeTab !== "Study Plan" && activeTab !== "Todo" && activeTab !== "Task History" && activeTab !== "Subjects & Semesters" && activeTab !== "Grades" && activeTab !== "Subscriptions" && activeTab !== "Achievements" && activeTab !== "Admin" && activeTab !== "Feedback" && (
               <div className="bg-[#1c1c1e] p-10 rounded-3xl border border-white/5 flex flex-col items-center justify-center text-gray-500 min-h-[300px]">
                 <span className="text-4xl mb-4">🚧</span>
                 <p>Widok <strong>{activeTab}</strong> jest w budowie...</p>
