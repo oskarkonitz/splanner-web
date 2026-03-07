@@ -3,12 +3,13 @@ import { useData } from '../context/DataContext';
 import ExamFormModal from '../components/ExamFormModal';
 import TopicFormModal from '../components/TopicFormModal';
 import NoteEditorModal from '../components/NoteEditorModal';
-import BlockedDaysModal from '../components/BlockedDaysModal'; // ZAAKTUALIZOWANY IMPORT
+import BlockedDaysModal from '../components/BlockedDaysModal'; 
+import HomeworkFormModal from '../components/HomeworkFormModal'; 
 
 export default function PlanView({ onBack }) {
   const { 
-    exams, topics, subjects, toggleTopicStatus, deleteTopic, runPlanner, 
-    saveExamNote, saveTopic, deleteExam 
+    exams, topics, subjects, assignments, toggleTopicStatus, deleteTopic, runPlanner, 
+    saveExamNote, saveTopic, deleteExam, deleteAssignment, saveAssignmentNote
   } = useData();
   
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
@@ -16,16 +17,17 @@ export default function PlanView({ onBack }) {
   
   const [showExamForm, setShowExamForm] = useState(false);
   const [examToEdit, setExamToEdit] = useState(null);
+
+  const [showHomeworkForm, setShowHomeworkForm] = useState(false); 
+  const [homeworkToEdit, setHomeworkToEdit] = useState(null); 
   
   const [showTopicForm, setShowTopicForm] = useState(false);
   const [topicToEdit, setTopicToEdit] = useState(null);
 
   const [noteModalData, setNoteModalData] = useState(null); 
 
-  // STAN DLA MODALU DNI WOLNYCH
   const [showBlockedDays, setShowBlockedDays] = useState(false);
 
-  // Stan do Drag & Drop (podświetlenie dnia nad którym jesteśmy)
   const [draggedOverDate, setDraggedOverDate] = useState(null);
 
   const todayStr = useMemo(() => {
@@ -45,16 +47,21 @@ export default function PlanView({ onBack }) {
 
   const groupedPlan = useMemo(() => {
     const datesSet = new Set();
-    const overdue = [];
+    const overdueTopics = [];
     
-    // Filtrowanie i rozdzielanie zaległych od nadchodzących
     topics.forEach(t => { 
       if (t.scheduled_date) {
         if (t.scheduled_date < todayStr && t.status !== 'done') {
-          overdue.push(t);
+          overdueTopics.push(t);
         } else if (t.scheduled_date >= todayStr) {
           datesSet.add(t.scheduled_date); 
         }
+      }
+    });
+
+    assignments.forEach(a => { 
+      if (a.type === 'homework' && a.date && a.date >= todayStr) {
+          datesSet.add(a.date); 
       }
     });
 
@@ -72,24 +79,25 @@ export default function PlanView({ onBack }) {
       isToday: date === todayStr,
       isOverdue: false,
       topics: topics.filter(t => t.scheduled_date === date),
+      homeworks: assignments.filter(a => a.type === 'homework' && a.date === date),
       exams: exams.filter(e => e.date === date)
     }));
 
-    // Jeśli są zaległe zadania, dodajemy je na początek listy jako blok "Overdue"
-    if (overdue.length > 0) {
-      overdue.sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date));
+    if (overdueTopics.length > 0) {
+      overdueTopics.sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date));
       upcomingPlan.unshift({
         id: 'overdue',
         date: 'Overdue',
         isToday: false,
         isOverdue: true,
-        topics: overdue,
+        topics: overdueTopics,
+        homeworks: [],
         exams: []
       });
     }
 
     return upcomingPlan;
-  }, [topics, exams, todayStr]);
+  }, [topics, exams, assignments, todayStr]);
 
   useEffect(() => {
     const closeMenus = () => { 
@@ -118,7 +126,7 @@ export default function PlanView({ onBack }) {
       id: item.id,
       type: type,
       content: item.note || '',
-      title: type === 'exam' ? `Exam Note: ${item.title}` : `Topic Note: ${item.name}`
+      title: type === 'exam' ? `Exam Note: ${item.title}` : type === 'homework' ? `Homework Note: ${item.title}` : `Topic Note: ${item.name}`
     });
     setContextMenu(null);
   };
@@ -129,9 +137,9 @@ export default function PlanView({ onBack }) {
       await saveExamNote(noteModalData.id, newNote);
     } else if (noteModalData.type === 'topic') {
       const topic = topics.find(t => t.id === noteModalData.id);
-      if (topic) {
-        await saveTopic({ ...topic, note: newNote });
-      }
+      if (topic) await saveTopic({ ...topic, note: newNote });
+    } else if (noteModalData.type === 'homework') {
+      await saveAssignmentNote(noteModalData.id, newNote);
     }
   };
 
@@ -147,7 +155,6 @@ export default function PlanView({ onBack }) {
     }
   };
 
-  // --- LOGIKA DRAG & DROP ---
   const handleDragStart = (e, topic) => {
     e.dataTransfer.setData('topicId', topic.id);
     e.dataTransfer.effectAllowed = 'move';
@@ -193,13 +200,11 @@ export default function PlanView({ onBack }) {
   return (
     <div className="flex flex-col h-full bg-[#121212] md:bg-[#1c1c1e] text-white relative">
       
-      {/* HEADER */}
       <header className="flex flex-wrap items-center justify-between p-4 px-6 pt-[calc(env(safe-area-inset-top)+1rem)] border-b border-gray-800 bg-[#1c1c1e] shrink-0 sticky top-0 z-30 shadow-md md:shadow-none">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold">Study Plan</h1>
         </div>
 
-        {/* WIDOK MOBILE: Rozwijane menu z akcjami */}
         <div className="md:hidden flex items-center gap-2 relative">
           <button 
             onClick={(e) => { e.stopPropagation(); setActionMenuOpen(!actionMenuOpen); }}
@@ -216,8 +221,15 @@ export default function PlanView({ onBack }) {
               <button onClick={() => { setExamToEdit(null); setShowExamForm(true); setActionMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 rounded-lg transition-colors text-sm font-medium">
                 <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"></path></svg> Add Exam
               </button>
+              
+              <button onClick={() => { setHomeworkToEdit(null); setShowHomeworkForm(true); setActionMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 rounded-lg transition-colors text-sm font-medium text-[#2ecc71]">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> Add Homework
+              </button>
 
-              {/* MENU ITEM: Days Off */}
+              <button disabled className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-gray-500 cursor-not-allowed">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg> Add Project (Soon)
+              </button>
+
               <button onClick={() => { setShowBlockedDays(true); setActionMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 rounded-lg transition-colors text-sm font-medium text-[#e74c3c]">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg> Days Off
               </button>
@@ -233,7 +245,6 @@ export default function PlanView({ onBack }) {
           )}
         </div>
 
-        {/* WIDOK DESKTOP: Ikony na stałe z tooltipami */}
         <div className="hidden md:flex items-center gap-2">
           
           <div className="relative group mr-2">
@@ -249,6 +260,14 @@ export default function PlanView({ onBack }) {
             </button>
             <div className="absolute top-full right-0 mt-2 hidden group-hover:block w-max bg-[#2b2b2b] text-xs font-medium px-2.5 py-1.5 rounded-lg border border-gray-700 shadow-xl pointer-events-none z-50">Add Exam</div>
           </div>
+
+          <div className="relative group">
+            <button onClick={() => { setHomeworkToEdit(null); setShowHomeworkForm(true); }} className="p-2.5 text-[#2ecc71] hover:bg-white/10 rounded-full transition-colors">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+            </button>
+            <div className="absolute top-full right-0 mt-2 hidden group-hover:block w-max bg-[#2b2b2b] text-xs font-medium px-2.5 py-1.5 rounded-lg border border-gray-700 shadow-xl pointer-events-none z-50">Add Homework</div>
+          </div>
+
           <div className="relative group">
             <button onClick={handlePlanUnscheduled} className="p-2.5 text-[#f1c40f] hover:bg-white/10 rounded-full transition-colors">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path></svg>
@@ -264,20 +283,16 @@ export default function PlanView({ onBack }) {
         </div>
       </header>
 
-      {/* --- ZAWARTOŚĆ --- */}
       <main className="flex-1 overflow-y-auto pb-32">
         
         {groupedPlan.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-10 mt-20 opacity-60 text-center">
             <svg className="w-20 h-20 mb-4 text-gray-500" fill="none" stroke="currentColor" strokeWidth="1" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-            <h2 className="text-xl font-bold">No upcoming exams.</h2>
+            <h2 className="text-xl font-bold">No upcoming exams or assignments.</h2>
             <p className="text-gray-400 mt-2 text-sm max-w-xs">Press the menu at the top right to add a new exam and topics to start planning.</p>
           </div>
         ) : (
           <>
-            {/* ---------------------------------------------------- */}
-            {/* WIDOK PWA / MOBILE (Oś czasu zamiast akordeonów)     */}
-            {/* ---------------------------------------------------- */}
             <div className="md:hidden max-w-4xl mx-auto px-4 pt-6 pb-10">
               {groupedPlan.map((plan, index) => {
                 const isHovered = draggedOverDate === plan.date && !plan.isOverdue;
@@ -292,13 +307,11 @@ export default function PlanView({ onBack }) {
                     onDrop={(e) => !plan.isOverdue && handleDrop(e, plan.date)}
                   >
                     
-                    {/* Linia i Kropka (Oś czasu) */}
                     <div className="w-12 shrink-0 flex flex-col items-center relative">
                       <div className={`w-3.5 h-3.5 rounded-full z-10 mt-1.5 transition-colors ${plan.isToday ? 'bg-[#3498db] ring-4 ring-[#3498db]/20' : (plan.isOverdue ? 'bg-red-500 ring-4 ring-red-500/20' : 'bg-gray-600')}`}></div>
                       {!isLast && <div className="absolute top-3 bottom-[-2rem] w-px bg-gray-800"></div>}
                     </div>
 
-                    {/* Treść dla danego dnia */}
                     <div className={`flex-1 min-w-0 transition-all duration-200 ${isHovered ? 'bg-[#3498db]/10 rounded-xl p-2 -m-2' : ''}`}>
                       
                       <div className="mb-3 flex items-baseline gap-2">
@@ -313,11 +326,10 @@ export default function PlanView({ onBack }) {
                       </div>
 
                       <div className="space-y-2">
-                        {plan.topics.length === 0 && plan.exams.length === 0 ? (
+                        {plan.topics.length === 0 && plan.exams.length === 0 && plan.homeworks.length === 0 ? (
                           <div className="text-sm text-gray-500 italic py-2">No tasks</div>
                         ) : (
                           <>
-                            {/* Egzaminy Mobile */}
                             {plan.exams.map(exam => (
                               <div 
                                 key={`mob_ex_${exam.id}`} 
@@ -339,12 +351,38 @@ export default function PlanView({ onBack }) {
                               </div>
                             ))}
 
-                            {/* Tematy Mobile */}
+                            {plan.homeworks.map(hw => (
+                              <div 
+                                key={`mob_hw_${hw.id}`} 
+                                onClick={(e) => handleContextMenu(e, hw, 'homework')}
+                                className="flex items-start justify-between p-3 bg-[#2ecc71]/10 border border-[#2ecc71]/20 rounded-xl cursor-pointer active:bg-[#2ecc71]/20 transition-colors"
+                              >
+                                <div className="flex flex-col gap-0.5 min-w-0 pr-2">
+                                  <div className="flex items-center gap-1.5">
+                                    <svg className="w-4 h-4 text-[#2ecc71] shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z" clipRule="evenodd"/></svg>
+                                    <span className="font-bold text-[#2ecc71] text-xs">HOMEWORK DEADLINE</span>
+                                  </div>
+                                  <span className="font-semibold text-[#2ecc71] text-sm break-words whitespace-normal">{hw.title} ({hw.subject})</span>
+                                </div>
+                                {hw.note && (
+                                  <span onClick={(e) => openNoteEditor(e, hw, 'homework')} className="text-[10px] text-[#2ecc71] bg-[#2ecc71]/20 px-2 py-1 rounded-md shrink-0 mt-1">
+                                    ✎ Note
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+
                             {plan.topics.map(topic => {
                               const isDone = topic.status === 'done';
-                              const exam = exams.find(e => e.id === topic.exam_id);
-                              const subject = subjects?.find(s => s.id === exam?.subject_id);
-                              const subjectColor = subject?.color || '#3498db';
+                              let parentItem = exams.find(e => e.id === topic.exam_id);
+                              let isHomework = false;
+                              if (!parentItem) {
+                                  parentItem = assignments.find(a => a.id === topic.assignment_id);
+                                  isHomework = !!parentItem;
+                              }
+                              const subject = subjects?.find(s => s.id === parentItem?.subject_id);
+                              const subjectColor = subject?.color || (isHomework ? '#2ecc71' : '#3498db');
+                              const parentName = parentItem?.subject || "Unknown";
 
                               return (
                                 <div 
@@ -354,7 +392,6 @@ export default function PlanView({ onBack }) {
                                   className={`flex items-start gap-3 p-3 bg-[#1c1c1e] border border-white/5 rounded-xl cursor-pointer transition-colors active:bg-white/5 ${isDone ? 'opacity-50' : ''}`}
                                   onClick={(e) => handleContextMenu(e, topic, 'topic')}
                                 >
-                                  {/* Checkbox (toggle status) */}
                                   <div 
                                     className="shrink-0 py-1 mt-0.5"
                                     onClick={(e) => { e.stopPropagation(); toggleTopicStatus(topic.id, topic.status); }}
@@ -364,11 +401,10 @@ export default function PlanView({ onBack }) {
                                     </div>
                                   </div>
 
-                                  {/* Tytuł i Przedmiot */}
                                   <div className="flex flex-col flex-1 min-w-0 justify-center gap-1">
                                     <div className="flex items-start gap-2">
                                       <span className="text-[11px] font-bold uppercase tracking-wider break-words whitespace-normal leading-tight flex items-center gap-1.5" style={{ color: subjectColor }}>
-                                        {exam?.subject || "Unknown"}
+                                        {parentName}
                                       </span>
                                       {plan.isOverdue && (
                                         <span className="text-[9px] text-red-400 font-bold bg-red-500/10 px-1.5 py-0.5 rounded shrink-0">
@@ -384,7 +420,6 @@ export default function PlanView({ onBack }) {
                                     </span>
                                   </div>
 
-                                  {/* Ikona notatki */}
                                   {topic.note && (
                                     <span 
                                       onClick={(e) => { e.stopPropagation(); openNoteEditor(e, topic, 'topic'); }} 
@@ -405,9 +440,6 @@ export default function PlanView({ onBack }) {
               })}
             </div>
 
-            {/* ---------------------------------------------------- */}
-            {/* WIDOK DESKTOP (Oś czasu a'la Python Treeview)        */}
-            {/* ---------------------------------------------------- */}
             <div className="hidden md:block max-w-5xl mx-auto pt-6 px-6">
               {groupedPlan.map(plan => {
                 const isHovered = draggedOverDate === plan.date && !plan.isOverdue;
@@ -415,7 +447,6 @@ export default function PlanView({ onBack }) {
                 return (
                   <div key={`desk_${plan.id}`} className="flex group">
                     
-                    {/* LEWA KOLUMNA: Oś czasu i data */}
                     <div className="w-40 shrink-0 border-r-2 border-gray-700 relative py-4 pr-6 text-right break-words">
                       <div className={`absolute right-[-9px] top-6 w-4 h-4 rounded-full border-4 transition-colors ${plan.isToday ? 'bg-[#3498db] border-[#3498db]' : (plan.isOverdue ? 'bg-[#1c1c1e] border-red-500 group-hover:border-red-400' : 'bg-[#1c1c1e] border-gray-600 group-hover:border-gray-400')}`}></div>
                       
@@ -429,19 +460,17 @@ export default function PlanView({ onBack }) {
                       )}
                     </div>
 
-                    {/* PRAWA KOLUMNA: Obszar zrzutu (Dropzone) */}
                     <div 
                       className={`flex-1 py-4 pl-8 mb-6 rounded-2xl transition-colors duration-200 min-h-[60px] ${isHovered ? 'bg-[#3498db]/10 border border-[#3498db]/30' : ''}`}
                       onDragOver={(e) => !plan.isOverdue && handleDragOver(e, plan.date)}
                       onDragLeave={handleDragLeave}
                       onDrop={(e) => !plan.isOverdue && handleDrop(e, plan.date)}
                     >
-                      {plan.topics.length === 0 && plan.exams.length === 0 ? (
+                      {plan.topics.length === 0 && plan.exams.length === 0 && plan.homeworks.length === 0 ? (
                         <div className="text-gray-500 italic mt-2 opacity-50">Drop topics here...</div>
                       ) : (
                         <div className="space-y-1.5">
                           
-                          {/* Egzaminy Desktop */}
                           {plan.exams.map(exam => (
                             <div 
                               key={`desk_ex_${exam.id}`} 
@@ -464,12 +493,39 @@ export default function PlanView({ onBack }) {
                             </div>
                           ))}
 
-                          {/* Tematy Desktop */}
+                          {plan.homeworks.map(hw => (
+                            <div 
+                              key={`desk_hw_${hw.id}`} 
+                              onClick={(e) => handleContextMenu(e, hw, 'homework')}
+                              className="flex items-center justify-between py-2 px-3 bg-[#2ecc71]/10 border border-[#2ecc71]/20 rounded-xl cursor-pointer group/exrow"
+                            >
+                              <div className="flex items-center gap-4">
+                                <svg className="w-5 h-5 text-[#2ecc71] shrink-0 ml-1" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z" clipRule="evenodd"/></svg>
+                                <span className="font-bold text-[#2ecc71]">{hw.title} ({hw.subject})</span>
+                              </div>
+                              
+                              <div className="flex items-center gap-2 pr-1">
+                                {hw.note && (
+                                  <span onClick={(e) => openNoteEditor(e, hw, 'homework')} className="text-xs text-[#2ecc71] bg-[#2ecc71]/20 px-2 py-1 rounded-md hover:text-white transition-colors cursor-pointer">
+                                    ✎ Note
+                                  </span>
+                                )}
+                                <svg className="w-4 h-4 text-[#2ecc71] opacity-0 group-hover/exrow:opacity-100 transition-opacity hover:text-[#2ecc71] ml-2" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z"></path></svg>
+                              </div>
+                            </div>
+                          ))}
+
                           {plan.topics.map(topic => {
                             const isDone = topic.status === 'done';
-                            const exam = exams.find(e => e.id === topic.exam_id);
-                            const subject = subjects?.find(s => s.id === exam?.subject_id);
-                            const subjectColor = subject?.color || '#3498db';
+                            let parentItem = exams.find(e => e.id === topic.exam_id);
+                            let isHomework = false;
+                            if (!parentItem) {
+                                parentItem = assignments.find(a => a.id === topic.assignment_id);
+                                isHomework = !!parentItem;
+                            }
+                            const subject = subjects?.find(s => s.id === parentItem?.subject_id);
+                            const subjectColor = subject?.color || (isHomework ? '#2ecc71' : '#3498db');
+                            const parentName = parentItem?.subject || "Unknown";
                             
                             return (
                               <div 
@@ -478,7 +534,6 @@ export default function PlanView({ onBack }) {
                                 onDragStart={(e) => handleDragStart(e, topic)}
                                 className={`flex items-stretch rounded-xl border border-transparent hover:border-gray-700 hover:bg-white/5 transition-colors group/row ${isDone ? 'opacity-50' : ''}`}
                               >
-                                {/* LEWA STRONA (TOGGLE) */}
                                 <div 
                                   className="flex items-center gap-4 py-2.5 px-3 cursor-pointer shrink-0"
                                   onClick={(e) => { e.stopPropagation(); toggleTopicStatus(topic.id, topic.status); }}
@@ -488,7 +543,7 @@ export default function PlanView({ onBack }) {
                                   </div>
                                   
                                   <div className="w-48 lg:w-64 font-bold truncate text-sm flex items-center gap-2" style={{ color: subjectColor }}>
-                                    <span className="truncate">{exam?.subject || "Unknown"}</span>
+                                    <span className="truncate">{parentName}</span>
                                     {plan.isOverdue && (
                                       <span className="text-[9px] text-red-400 font-bold bg-red-500/10 px-1.5 py-0.5 rounded shrink-0">
                                         {topic.scheduled_date}
@@ -497,7 +552,6 @@ export default function PlanView({ onBack }) {
                                   </div>
                                 </div>
 
-                                {/* PRAWA STRONA (MENU) */}
                                 <div 
                                   className="flex items-center justify-between flex-1 py-2.5 pr-3 cursor-pointer min-w-0"
                                   onClick={(e) => handleContextMenu(e, topic, 'topic')}
@@ -533,7 +587,6 @@ export default function PlanView({ onBack }) {
         )}
       </main>
 
-      {/* --- MENU KONTEKSTOWE --- */}
       {contextMenu && (
         <div 
           className="fixed z-50 bg-[#1c1c1e] border border-gray-800 rounded-xl shadow-2xl py-1 w-48 animate-in fade-in zoom-in-95 duration-100"
@@ -580,12 +633,27 @@ export default function PlanView({ onBack }) {
               </button>
             </>
           )}
+
+          {contextMenu.type === 'homework' && (
+            <>
+              <button onClick={() => { setHomeworkToEdit(contextMenu.item); setShowHomeworkForm(true); setContextMenu(null); }} className="w-full text-left px-4 py-3 text-sm font-medium text-white hover:bg-white/10 transition-colors border-b border-gray-800">
+                Edit Homework
+              </button>
+              <button onClick={(e) => openNoteEditor(e, contextMenu.item, 'homework')} className="w-full text-left px-4 py-3 text-sm font-medium text-white hover:bg-white/10 transition-colors border-b border-gray-800">
+                Edit Note
+              </button>
+              <button onClick={() => { if(window.confirm(`Delete homework: ${contextMenu.item.title}?`)) deleteAssignment(contextMenu.item.id); setContextMenu(null); }} className="w-full text-left px-4 py-3 text-sm font-medium text-red-500 hover:bg-white/10 transition-colors">
+                Delete Homework
+              </button>
+            </>
+          )}
         </div>
       )}
 
-      {/* --- MODALE --- */}
       <ExamFormModal isOpen={showExamForm} initialData={examToEdit} onClose={() => setShowExamForm(false)} />
+      <HomeworkFormModal isOpen={showHomeworkForm} initialData={homeworkToEdit} onClose={() => setShowHomeworkForm(false)} />
       <TopicFormModal isOpen={showTopicForm} topic={topicToEdit} onClose={() => setShowTopicForm(false)} />
+      
       <NoteEditorModal 
         isOpen={noteModalData?.isOpen} 
         initialNote={noteModalData?.content} 
@@ -594,7 +662,6 @@ export default function PlanView({ onBack }) {
         onSave={handleSaveNote}
       />
       
-      {/* DODANE: Modal Blocked Days */}
       <BlockedDaysModal 
         isOpen={showBlockedDays} 
         onClose={() => setShowBlockedDays(false)} 

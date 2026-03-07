@@ -52,7 +52,7 @@ export default function HomeView() {
   const [currentUserId, setCurrentUserId] = useState(null)
 
   const { 
-    isLoading, dailyTasks, topics, exams, globalStats,
+    isLoading, dailyTasks, topics, exams, assignments, globalStats,
     subjects, scheduleEntries, cancellations, customEvents, 
     eventLists, semesters, gradeModules, grades,
     taskLists, subscriptions, settings,
@@ -75,7 +75,6 @@ export default function HomeView() {
   const [tasksNeedScroll, setTasksNeedScroll] = useState(false);
   const [shoppingNeedScroll, setShoppingNeedScroll] = useState(false);
 
-  // --- OPTYMALIZACJE OBLICZEŃ DASHBOARDU (Bez resetowania do 0 podczas refetchy) ---
 
   const focusTime = useMemo(() => {
     if (!globalStats) return 0;
@@ -103,9 +102,12 @@ export default function HomeView() {
 
     const futureExams = (exams || []).filter(e => e.date >= todayStr);
     const futureExamIDs = new Set(futureExams.map(e => e.id));
+
+    const futureAssignments = (assignments || []).filter(a => a.date >= todayStr);
+    const futureAssignmentIDs = new Set(futureAssignments.map(a => a.id));
     
     const relevantTopics = (topics || []).filter(t => 
-      futureExamIDs.has(t.exam_id) || t.status !== 'done'
+      futureExamIDs.has(t.exam_id) || futureAssignmentIDs.has(t.assignment_id) || t.status !== 'done'
     );
     const relevantTasks = (dailyTasks || []).filter(t => 
       (t.date && t.date >= todayStr) || t.status !== 'done'
@@ -117,7 +119,7 @@ export default function HomeView() {
     };
 
     return { todayProgress: tProgress, totalProgress: totProgress };
-  }, [dailyTasks, topics, exams]);
+  }, [dailyTasks, topics, exams, assignments]);
 
   const nextExam = useMemo(() => {
     if (!exams) return null;
@@ -302,8 +304,6 @@ export default function HomeView() {
     return totalECTS === 0 ? 0 : (weightedSum / totalECTS);
   }, [subjects, semesters, gradeModules, grades]);
 
-  // --- POZOSTAŁA CZĘŚĆ KOMPONENTU ---
-
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (user) setCurrentUserId(user.id);
@@ -449,12 +449,14 @@ export default function HomeView() {
       ...tTasks.map(t => ({ id: t.id, title: t.content, color: t.color || '#3498db', type: 'task' })),
       ...tTopics.map(t => {
         const ex = exams?.find(e => e.id === t.exam_id);
-        const subj = subjects?.find(s => s.id === ex?.subject_id);
-        return { id: t.id, title: t.name, color: subj?.color || '#9b59b6', type: 'topic' };
+        const hw = assignments?.find(a => a.id === t.assignment_id);
+        const parent = ex || hw;
+        const subj = subjects?.find(s => s.id === parent?.subject_id);
+        return { id: t.id, title: t.name, color: subj?.color || (hw ? '#2ecc71' : '#9b59b6'), type: 'topic' };
       })
     ];
     return combined;
-  }, [dailyTasks, topics, taskLists, exams, subjects]);
+  }, [dailyTasks, topics, taskLists, exams, assignments, subjects]);
 
   const shoppingItemsList = useMemo(() => {
     if (!dailyTasks || !taskLists) return [];
@@ -1188,7 +1190,6 @@ export default function HomeView() {
   return (
     <div className="flex h-screen w-full bg-[#2b2b2b] text-white overflow-hidden relative">
       
-      {/* PASEK BOCZNY */}
       <aside className="hidden md:flex flex-col w-72 bg-[#1c1c1e] border-r border-gray-800 px-6 pb-6 pt-[calc(env(safe-area-inset-top)+1.5rem)] overflow-y-auto">
         <div 
           className="flex items-center gap-3 mb-10 cursor-pointer hover:opacity-80 transition-opacity shrink-0"
@@ -1242,7 +1243,6 @@ export default function HomeView() {
           ))}
         </nav>
         
-        {/* PRZYCISK FEEDBACKU W BOCZNYM MENU NA PC */}
         <div className="mt-6 pt-6 border-t border-gray-800 shrink-0">
           <button 
             onClick={() => setActiveTab("Feedback")}
@@ -1254,10 +1254,8 @@ export default function HomeView() {
         </div>
       </aside>
 
-      {/* GŁÓWNA ZAWARTOŚĆ */}
       <div className="flex-1 flex flex-col relative">
 
-        {/* GLOBALNY BANER OGŁOSZEŃ */}
         {appConfig?.global_message?.active && appConfig.global_message.text && !isBannerDismissed && (
           <div className={`w-full px-4 pb-2.5 pt-[calc(env(safe-area-inset-top)+0.625rem)] flex items-center justify-between text-sm shadow-md z-40 shrink-0 ${
             appConfig.global_message.type === 'error' ? 'bg-red-500 text-white' :
@@ -1364,7 +1362,6 @@ export default function HomeView() {
                   ))}
                 </div>
                 
-                {/* PRZYCISK FEEDBACKU W MENU "MORE" NA MOBILE */}
                 <div className="mt-auto md:hidden pt-4 border-t border-gray-800 pb-20 mb-4">
                   <button 
                     onClick={() => setActiveTab("Feedback")}
@@ -1387,7 +1384,6 @@ export default function HomeView() {
           </main>
         )}
 
-        {/* TOAST DLA WINDOWS */}
         {appConfig?.windows_support?.show_toast && (
           <div 
             className={`fixed bottom-24 md:bottom-10 right-6 z-50 bg-[#1c1c1e] border border-gray-700 rounded-2xl shadow-2xl p-5 w-72 md:w-80 transform transition-all duration-500 ease-in-out ${showWindowsToast ? 'translate-x-0 opacity-100' : 'translate-x-[150%] opacity-0'}`}
@@ -1418,7 +1414,6 @@ export default function HomeView() {
           </div>
         )}
 
-        {/* NOWY SYSTEM KOLEJKOWANIA TOASTÓW (GLOBAL/DIRECT) */}
         {displayToast && (
           <div 
             className={`fixed bottom-[140px] md:bottom-36 right-6 z-50 bg-[#1c1c1e] border border-gray-700 rounded-2xl shadow-2xl p-5 w-72 md:w-80 transform transition-all duration-400 ease-in-out ${
@@ -1460,7 +1455,6 @@ export default function HomeView() {
           </div>
         )}
 
-        {/* DOLNY PASEK NAWIGACJI */}
         <nav className="md:hidden absolute bottom-0 w-full bg-[#1c1c1e]/90 backdrop-blur-md border-t border-gray-800">
           <div className="flex justify-around items-center h-20 px-2">
             {[...mainTabs, "More"].map((tab) => {
@@ -1485,7 +1479,6 @@ export default function HomeView() {
         </nav>
       </div>
 
-      {/* --- MODAL NOTATNIKA --- */}
       <MinecraftNotebook 
         isOpen={!!notebookSubject} 
         onClose={() => setNotebookSubject(null)} 

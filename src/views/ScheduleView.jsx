@@ -7,6 +7,7 @@ import EventFormModal from '../components/EventFormModal'
 import SubjectFormModal from '../components/SubjectFormModal'
 import NoteEditorModal from '../components/NoteEditorModal' 
 import MinecraftNotebook from '../components/MinecraftNotebook' 
+import HomeworkFormModal from '../components/HomeworkFormModal' // ZAAKTUALIZOWANY IMPORT
 
 const START_HOUR = 0;
 const END_HOUR = 24;
@@ -41,7 +42,8 @@ export default function ScheduleView({ onBack }) {
   const { 
     subjects, scheduleEntries, exams, customEvents, cancellations, 
     semesters, eventLists, deleteExam, deleteCustomEvent,
-    scheduleNotes, saveScheduleNote, cancelClass, fetchDashboardData 
+    scheduleNotes, saveScheduleNote, cancelClass, fetchDashboardData,
+    assignments, deleteAssignment // NOWE DANE Z CONTEXTU
   } = useData();
 
   const [currentWeekMonday, setCurrentWeekMonday] = useState(() => getMonday(new Date()));
@@ -56,6 +58,7 @@ export default function ScheduleView({ onBack }) {
   const [showExamForm, setShowExamForm] = useState(false);
   const [showEventForm, setShowEventForm] = useState(false);
   const [showSubjectForm, setShowSubjectForm] = useState(false);
+  const [showHomeworkForm, setShowHomeworkForm] = useState(false); // NOWY STAN MODALU
   const [formInitialData, setFormInitialData] = useState(null);
   
   const [noteModalData, setNoteModalData] = useState(null);
@@ -147,6 +150,7 @@ export default function ScheduleView({ onBack }) {
       [`${n.entry_id}_${n.date}`]: n.content
     }), {});
 
+    // 1. ZAJĘCIA
     (scheduleEntries || []).forEach(entry => {
       const subject = subjectsCache[entry.subject_id];
       if (!subject) return;
@@ -193,6 +197,7 @@ export default function ScheduleView({ onBack }) {
       });
     });
 
+    // 2. EGZAMINY
     (exams || []).forEach(exam => {
       const subject = subjectsCache[exam.subject_id];
       if (!subject) return;
@@ -223,6 +228,39 @@ export default function ScheduleView({ onBack }) {
       }
     });
 
+    // 3. PRACE DOMOWE
+    (assignments || []).forEach(hw => {
+      if (hw.type !== 'homework') return; // upewnienie sie ze to tylko prace domowe
+      const subject = subjectsCache[hw.subject_id];
+      if (!subject) return;
+      if (selectedSemesters.size > 0 && !selectedSemesters.has(subject.semester_id)) return;
+
+      if (hw.date >= weekStartStr && hw.date <= weekEndStr) {
+        const hwDate = new Date(hw.date);
+        const dayIdx = (hwDate.getDay() + 6) % 7;
+        
+        const timeStr = hw.time || "23:59";
+        const [sH, sM] = timeStr.split(':').map(Number);
+        const startVal = sH + sM / 60.0;
+
+        result.push({
+          id: `hw_${hw.id}`,
+          type: 'homework',
+          dayIdx,
+          startVal,
+          duration: 1.0, 
+          color: "#2ecc71", 
+          title: subject.name,
+          timeStr: timeStr,
+          startTime: timeStr,
+          endTime: "",
+          subtitle: `${hw.title}`,
+          rawData: { hw, subject }
+        });
+      }
+    });
+
+    // 4. CUSTOM EVENTS
     (customEvents || []).forEach(ev => {
       if (selectedLists.size > 0 && !selectedLists.has(ev.list_id)) return;
 
@@ -316,6 +354,8 @@ export default function ScheduleView({ onBack }) {
     });
 
     const classBlocks = result.filter(b => b.type === 'class');
+    
+    // MERGING EXAMS
     result.filter(b => b.type === 'exam').forEach(examBlock => {
       const ex = examBlock.rawData.exam;
       const exTime = (ex.time || "08:00").substring(0, 5);
@@ -332,8 +372,34 @@ export default function ScheduleView({ onBack }) {
       }
     });
 
+    // MERGING HOMEWORKS
+    result.filter(b => b.type === 'homework').forEach(hwBlock => {
+      const hw = hwBlock.rawData.hw;
+      const hwTime = (hw.time || "23:59").substring(0, 5);
+      
+      let matchingClass = classBlocks.find(c => 
+        c.rawData.entry.subject_id === hw.subject_id &&
+        c.rawData.dateStr === hw.date &&
+        c.startTime.substring(0, 5) === hwTime
+      );
+      
+      // Fallback jeśli czas został zmieniony, szukamy jakichkolwiek zajęć tego dnia z tego przedmiotu
+      if (!matchingClass) {
+          matchingClass = classBlocks.find(c => 
+            c.rawData.entry.subject_id === hw.subject_id &&
+            c.rawData.dateStr === hw.date
+          );
+      }
+      
+      if (matchingClass) {
+        hwBlock.isMerged = true;
+        if (!matchingClass.associatedHomeworks) matchingClass.associatedHomeworks = [];
+        matchingClass.associatedHomeworks.push(hwBlock);
+      }
+    });
+
     return result;
-  }, [subjects, scheduleEntries, exams, customEvents, cancellations, currentWeekMonday, weekDates, selectedSemesters, selectedLists, scheduleNotes, semesters]);
+  }, [subjects, scheduleEntries, exams, assignments, customEvents, cancellations, currentWeekMonday, weekDates, selectedSemesters, selectedLists, scheduleNotes, semesters]);
 
   const layoutBlocks = useMemo(() => {
     const visibleBlocks = blocks.filter(b => !b.isMerged);
@@ -572,6 +638,13 @@ export default function ScheduleView({ onBack }) {
           if(window.confirm("Are you sure you want to delete this exam?")) deleteExam(block.rawData.exam.id); 
         }, destructive: true }
       ];
+    } else if (block.type === 'homework') {
+      items = [
+        { label: "Edit Homework", action: () => { setFormInitialData(block.rawData.hw); setShowHomeworkForm(true); } },
+        { label: "Delete", action: () => { 
+          if(window.confirm("Are you sure you want to delete this homework?")) deleteAssignment(block.rawData.hw.id); 
+        }, destructive: true }
+      ];
     } else if (block.type === 'event') {
       items = [
         { label: "Edit Event", action: () => { setFormInitialData(block.rawData.ev); setShowEventForm(true); } },
@@ -681,6 +754,7 @@ export default function ScheduleView({ onBack }) {
         </div>
       </header>
 
+      {/* MOBILE AGENDA */}
       <div className="md:hidden flex flex-col flex-1 overflow-hidden bg-[#2b2b2b]">
         <div className="flex justify-between sm:justify-start overflow-x-auto gap-1 sm:gap-3 px-2 sm:px-4 py-2 sm:py-3 bg-[#1c1c1e] border-b border-gray-800 scrollbar-hide shrink-0">
           {weekDates.map((date, i) => {
@@ -717,11 +791,11 @@ export default function ScheduleView({ onBack }) {
                 <div 
                   key={block.id} 
                   onClick={(e) => handleBlockClick(e, block)}
-                  className={`relative bg-[#1c1c1e] rounded-xl overflow-hidden shadow-sm active:scale-[0.98] transition-transform p-4 flex gap-4 h-auto ${block.type === 'exam' ? 'border border-red-500/30 bg-red-500/5' : ''}`}
+                  className={`relative bg-[#1c1c1e] rounded-xl overflow-hidden shadow-sm active:scale-[0.98] transition-transform p-4 flex gap-4 h-auto ${block.type === 'exam' ? 'border border-red-500/30 bg-red-500/5' : ''} ${block.type === 'homework' ? 'border border-[#2ecc71]/30 bg-[#2ecc71]/5' : ''}`}
                 >
                   <div className="absolute left-0 top-0 bottom-0 w-1.5" style={{ backgroundColor: block.color }}></div>
                   <div className="w-14 sm:w-16 flex-shrink-0 flex flex-col text-right justify-start mt-0.5">
-                    <span className={`text-sm font-bold ${block.type === 'exam' ? 'text-red-500' : 'text-white'}`}>{block.startTime}</span>
+                    <span className={`text-sm font-bold ${block.type === 'exam' ? 'text-red-500' : (block.type === 'homework' ? 'text-[#2ecc71]' : 'text-white')}`}>{block.startTime}</span>
                     {block.endTime && <span className="text-xs text-gray-500 font-medium">{block.endTime}</span>}
                   </div>
                   <div className="w-px bg-gray-800"></div>
@@ -746,12 +820,13 @@ export default function ScheduleView({ onBack }) {
                     )}
 
                     {block.type === 'exam' && <span className="text-[10px] font-bold text-red-500 mb-0.5">{block.subtitle}</span>}
+                    {block.type === 'homework' && <span className="text-[10px] font-bold text-[#2ecc71] mb-0.5">{block.subtitle}</span>}
                     
                     <span className="font-bold text-white text-base leading-tight mb-1 line-clamp-3 break-words whitespace-normal">
                       {block.title}
                     </span>
                     
-                    {block.type !== 'exam' && block.subtitle && (
+                    {(block.type === 'class' || block.type === 'event') && block.subtitle && (
                       <span className="text-xs text-gray-400 flex items-start gap-1.5 mt-0.5 leading-tight">
                         {block.type === 'class' && <svg className="w-3.5 h-3.5 shrink-0 mt-px" fill="currentColor" viewBox="0 0 20 20"><path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.838L7.667 9.088l1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.838l-7-3zM3.31 8.56l-1.222.524a1 1 0 000 1.838l7 3a1 1 0 00.788 0l7-3a1 1 0 000-1.838H16.8l-6.4 2.743a1 1 0 01-.8 0L3.31 8.56z"/></svg>}
                         <span className="break-words line-clamp-2">{block.subtitle}</span>
@@ -781,6 +856,24 @@ export default function ScheduleView({ onBack }) {
                       </div>
                     )}
 
+                    {block.associatedHomeworks && block.associatedHomeworks.map(hwBlock => (
+                      <div 
+                        key={hwBlock.id}
+                        className="mt-2 p-2 bg-[#2ecc71]/10 border border-[#2ecc71]/30 rounded-lg cursor-pointer active:bg-[#2ecc71]/20 transition-colors"
+                        onClick={(e) => handleBlockClick(e, hwBlock)}
+                      >
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="w-4 h-4 rounded bg-[#2ecc71] text-white flex items-center justify-center shrink-0">
+                            <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                          </span>
+                          <span className="text-[10px] font-bold text-[#2ecc71] uppercase tracking-wider">{hwBlock.subtitle}</span>
+                        </div>
+                        <span className="text-[11px] text-[#2ecc71] opacity-90 font-medium break-words whitespace-normal">
+                          {hwBlock.timeStr}
+                        </span>
+                      </div>
+                    ))}
+
                     {(block.isCutTop || block.isCutBottom) && <span className="text-xs text-[#3498db] mt-1 font-medium">Multi-day event</span>}
                   </div>
                 </div>
@@ -790,6 +883,7 @@ export default function ScheduleView({ onBack }) {
         </div>
       </div>
 
+      {/* DESKTOP CALENDAR */}
       <main className="hidden md:flex flex-1 overflow-auto bg-[#2b2b2b]" ref={scrollRef}>
         <div className="min-w-[800px] flex flex-col h-full w-full">
           <div className="flex border-b border-gray-200 dark:border-gray-800 sticky top-0 z-20 bg-[#2b2b2b]">
@@ -948,6 +1042,7 @@ export default function ScheduleView({ onBack }) {
                           </div>
                         )}
                         
+                        {/* NOTATKA */}
                         {segment.isLastSegment && block.note && (
                           <div 
                             className="absolute inset-0 z-40 pointer-events-none group/note"
@@ -976,6 +1071,7 @@ export default function ScheduleView({ onBack }) {
                           </div>
                         )}
 
+                        {/* EGZAMIN */}
                         {segment.isFirstSegment && block.associatedExam && (
                           <div 
                             className="absolute inset-0 z-40 pointer-events-none group/exam"
@@ -1000,6 +1096,36 @@ export default function ScheduleView({ onBack }) {
                             </div>
                           </div>
                         )}
+
+                        {/* PRACA DOMOWA */}
+                        {segment.isLastSegment && block.associatedHomeworks && block.associatedHomeworks.map((hwBlock, hwIdx) => {
+                          // Jeśli jest notatka, ikony prac domowych układają się od prawej z przesunięciem o 24px per element (zaczynając od 28px jeśli jest notatka, albo 4px jeśli jej nie ma)
+                          const rightPx = (block.note ? 28 : 4) + (hwIdx * 24);
+
+                          return (
+                            <div key={hwBlock.id} className="absolute inset-0 z-40 pointer-events-none group/hw" style={{ '--full-height': `${block.duration * PX_PER_HOUR}px` }}>
+                              <div 
+                                onClick={(e) => handleBlockClick(e, hwBlock)}
+                                className="absolute bottom-1 w-5 h-5 bg-[#2ecc71] rounded border border-white flex items-center justify-center shadow-md transition-all duration-300 ease-in-out cursor-pointer pointer-events-auto group-hover/hw:opacity-0 group-hover/hw:scale-50"
+                                style={{ right: `${rightPx}px` }}
+                                title={hwBlock.subtitle}
+                              >
+                                <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                              </div>
+                              <div 
+                                onClick={(e) => handleBlockClick(e, hwBlock)}
+                                className="absolute bottom-0 right-0 w-5 h-5 opacity-0 rounded-md border-l-4 border-green-700 bg-[#2ecc71] shadow-lg flex flex-col overflow-hidden pointer-events-none transition-all duration-300 ease-out group-hover/hw:w-full group-hover/hw:h-[var(--full-height)] group-hover/hw:opacity-100 group-hover/hw:pointer-events-auto p-1.5 z-[60]"
+                              >
+                                <div className="w-max min-w-[120px]">
+                                  <span className="text-[10px] font-bold text-white leading-tight mb-0.5 block line-clamp-2">Homework</span>
+                                  <span className="text-[9px] font-medium text-white leading-tight block whitespace-pre-line">{hwBlock.timeStr}</span>
+                                  <span className="text-[9px] font-bold text-white truncate mt-0.5 block">{hwBlock.subtitle}</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+
                       </div>
                     </div>
                   );
@@ -1107,6 +1233,13 @@ export default function ScheduleView({ onBack }) {
         isOpen={showSubjectForm} 
         initialData={formInitialData} 
         onClose={() => setShowSubjectForm(false)} 
+      />
+
+      {/* NOWY MODAL PRACY DOMOWEJ */}
+      <HomeworkFormModal 
+        isOpen={showHomeworkForm} 
+        initialData={formInitialData} 
+        onClose={() => setShowHomeworkForm(false)} 
       />
       
       <NoteEditorModal 
