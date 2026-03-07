@@ -1,4 +1,3 @@
-// ScheduleView.jsx
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useData } from '../context/DataContext'
 import { supabase } from '../api/supabase' 
@@ -707,7 +706,7 @@ export default function ScheduleView({ onBack }) {
                         <span className="text-sm">{lst.name}</span>
                       </div>
                     </label>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
                       <button 
                         onClick={(e) => handleOpenEditCategory(e, lst)} 
                         className="text-gray-500 hover:text-[#3498db] p-1"
@@ -886,12 +885,12 @@ export default function ScheduleView({ onBack }) {
       {/* DESKTOP CALENDAR */}
       <main className="hidden md:flex flex-1 overflow-auto bg-[#2b2b2b]" ref={scrollRef}>
         <div className="min-w-[800px] flex flex-col h-full w-full">
-          <div className="flex border-b border-gray-200 dark:border-gray-800 sticky top-0 z-20 bg-[#2b2b2b]">
+          <div className="flex border-b border-white/5 sticky top-0 z-20 bg-[#2b2b2b]">
             <div className="w-16 flex-shrink-0"></div>
             {weekDates.map((date, i) => {
               const isToday = toDateString(date) === todayStr;
               return (
-                <div key={i} className="flex-1 flex flex-col items-center py-2 border-l border-gray-100 dark:border-gray-800/50">
+                <div key={i} className="flex-1 flex flex-col items-center py-2 border-l border-white/5">
                   <span className={`text-xs font-bold uppercase ${isToday ? 'text-[#3498db]' : 'text-gray-500'}`}>{DAYS[i]}</span>
                   <span className={`text-xl font-bold ${isToday ? 'text-white bg-[#3498db] w-8 h-8 rounded-full flex items-center justify-center' : 'text-gray-800 dark:text-gray-200 mt-1'}`}>
                     {date.getDate()}
@@ -902,7 +901,7 @@ export default function ScheduleView({ onBack }) {
           </div>
 
           <div className="flex relative w-full" style={{ height: `${(END_HOUR - START_HOUR) * PX_PER_HOUR}px` }}>
-            <div className="w-16 flex-shrink-0 relative border-r border-gray-200 dark:border-gray-800 bg-[#2b2b2b] z-10">
+            <div className="w-16 flex-shrink-0 relative border-r border-white/5 bg-[#2b2b2b] z-10">
               {Array.from({ length: END_HOUR - START_HOUR + 1 }).map((_, i) => (
                 <div key={i} className="absolute w-full text-right pr-2 text-xs text-gray-500 font-medium -translate-y-1/2" style={{ top: i * PX_PER_HOUR }}>
                   {`${String(START_HOUR + i).padStart(2, '0')}:00`}
@@ -912,11 +911,7 @@ export default function ScheduleView({ onBack }) {
 
             <div className="flex-1 flex relative">
               {Array.from({ length: END_HOUR - START_HOUR }).map((_, i) => (
-                <div key={i} className="absolute w-full border-t border-gray-100 dark:border-gray-800 pointer-events-none" style={{ top: (i + 1) * PX_PER_HOUR }}></div>
-              ))}
-
-              {Array.from({ length: 7 }).map((_, i) => (
-                <div key={i} className="flex-1 border-l border-gray-100 dark:border-gray-800/50 relative"></div>
+                <div key={i} className="absolute w-full border-t border-white/5 pointer-events-none" style={{ top: (i + 1) * PX_PER_HOUR }}></div>
               ))}
 
               {(() => {
