@@ -67,7 +67,7 @@ export function DataProvider({ children }) {
         supabase.from('schedule_entries').select('*'),
         supabase.from('schedule_cancellations').select('*'),
         supabase.from('custom_events').select('*'),
-        supabase.from('eventLists').select('*'), 
+        supabase.from('event_lists').select('*'), // <--- TUTAJ BYŁ BŁĄD (eventLists -> event_lists)
         supabase.from('semesters').select('*'),
         supabase.from('app_config').select('*'), 
         supabase.from('admins').select('user_id'),
