@@ -4,10 +4,14 @@ import { supabase } from '../api/supabase'
 import { useData } from '../context/DataContext'
 
 export default function SettingsView({ onBack }) {
-  const { session, taskLists, settings, updateSetting, appConfig } = useData()
+  // Usunąłem 'session' stąd, bo DataContext go nie zwraca
+  const { taskLists, settings, updateSetting, appConfig } = useData()
   
   const [activeModal, setActiveModal] = useState(null)
   
+  // NOWE: Stan przechowujący aktualnego użytkownika
+  const [currentUser, setCurrentUser] = useState(null)
+
   // Stan wykrywający system operacyjny
   const [isWindows, setIsWindows] = useState(false)
 
@@ -16,9 +20,19 @@ export default function SettingsView({ onBack }) {
   const [passwordMessage, setPasswordMessage] = useState({ type: '', text: '' })
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false)
 
+  // Stany dla zmiany emaila
+  const [newEmail, setNewEmail] = useState('')
+  const [emailMessage, setEmailMessage] = useState({ type: '', text: '' })
+  const [isUpdatingEmail, setIsUpdatingEmail] = useState(false)
+
+  // Stany dla zmiany nazwy użytkownika
+  const [newUsername, setNewUsername] = useState('')
+  const [usernameMessage, setUsernameMessage] = useState({ type: '', text: '' })
+  const [isUpdatingUsername, setIsUpdatingUsername] = useState(false)
+
   // Stany dla konfiguracji Dashboardu
   const [localDashboardLayout, setLocalDashboardLayout] = useState(null)
-  const [layoutTab, setLayoutTab] = useState('desktop') // 'desktop' lub 'mobile'
+  const [layoutTab, setLayoutTab] = useState('desktop')
 
   const dashboardWidgetsList = [
     { id: 'progress', label: 'Progress Summary (Bars)' },
@@ -31,10 +45,16 @@ export default function SettingsView({ onBack }) {
     { id: 'gpa', label: 'Current GPA' }
   ];
 
-  // Sprawdzanie systemu po załadowaniu komponentu
+  // NOWE: Pobieranie użytkownika i sprawdzanie systemu przy montowaniu
   useEffect(() => {
     const checkIsWindows = /Win/i.test(navigator.userAgent);
     setIsWindows(checkIsWindows);
+
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setCurrentUser(user);
+    };
+    fetchUser();
   }, []);
 
   const shoppingLists = useMemo(() => {
@@ -141,6 +161,49 @@ export default function SettingsView({ onBack }) {
     }
   };
 
+  const handleChangeEmail = async (e) => {
+    e.preventDefault();
+    setIsUpdatingEmail(true);
+    setEmailMessage({ type: 'info', text: 'Sending confirmation emails...' });
+
+    const { data, error } = await supabase.auth.updateUser({ email: newEmail });
+    
+    setIsUpdatingEmail(false);
+
+    if (error) {
+      setEmailMessage({ type: 'error', text: error.message });
+    } else {
+      setEmailMessage({ type: 'success', text: 'Check both your old and new email inboxes to confirm the change.' });
+      setNewEmail('');
+      if (data?.user) setCurrentUser(data.user);
+    }
+  };
+
+  const handleChangeUsername = async (e) => {
+    e.preventDefault();
+    setIsUpdatingUsername(true);
+    setUsernameMessage({ type: 'info', text: 'Updating username...' });
+
+    const { data, error } = await supabase.auth.updateUser({ 
+      data: { username: newUsername } 
+    });
+    
+    setIsUpdatingUsername(false);
+
+    if (error) {
+      setUsernameMessage({ type: 'error', text: error.message });
+    } else {
+      setUsernameMessage({ type: 'success', text: 'Username updated successfully!' });
+      // Aktualizujemy lokalny stan, żeby UI odświeżyło się od razu
+      if (data?.user) setCurrentUser(data.user);
+      
+      setTimeout(() => {
+        setActiveModal(null);
+        setUsernameMessage({ type: '', text: '' });
+      }, 2000);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 md:relative md:inset-auto md:z-auto flex flex-col h-full bg-[#2b2b2b] text-white">
       
@@ -208,13 +271,43 @@ export default function SettingsView({ onBack }) {
         )}
 
         <Section title="Account">
-          <div className="flex items-center gap-3 p-4 border-b border-gray-800">
-            <svg className="w-10 h-10 text-[#3498db]" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 4c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm0 14c-2.03 0-4.43-.82-6.14-2.88C7.55 15.8 9.68 15 12 15s4.45.8 6.14 2.12C16.43 19.18 14.03 20 12 20z"/></svg>
-            <div>
-              <div className="text-xs text-gray-400">Logged in as:</div>
-              <div className="font-medium">{session?.user?.email || "Unknown User"}</div>
+          <div className="flex items-center gap-4 p-4 border-b border-gray-800">
+            <div className="w-12 h-12 bg-gray-700 rounded-full flex items-center justify-center text-xl font-bold text-white shrink-0">
+              {/* NOWE: Obsługa currentUser */}
+              {currentUser?.user_metadata?.username 
+                ? currentUser.user_metadata.username.charAt(0).toUpperCase() 
+                : currentUser?.email?.charAt(0).toUpperCase() || '?'}
+            </div>
+            <div className="min-w-0">
+              <div className="font-bold text-lg truncate">
+                {currentUser?.user_metadata?.username || "Set a username"}
+              </div>
+              <div className="text-sm text-gray-400 truncate">
+                {currentUser?.email || "Unknown Email"}
+              </div>
             </div>
           </div>
+
+          <Row 
+            title="Change Username" 
+            icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>}
+            hasArrow
+            onClick={() => {
+              setUsernameMessage({ type: '', text: '' });
+              setNewUsername(currentUser?.user_metadata?.username || '');
+              setActiveModal('changeUsername');
+            }} 
+          />
+          <Row 
+            title="Change Email" 
+            icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>}
+            hasArrow
+            onClick={() => {
+              setEmailMessage({ type: '', text: '' });
+              setNewEmail('');
+              setActiveModal('changeEmail');
+            }} 
+          />
           <Row 
             title="Change Password" 
             icon={<svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4v-3.252l1.465-1.465A6 6 0 0115 9z"></path></svg>}
@@ -366,6 +459,101 @@ export default function SettingsView({ onBack }) {
                         <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></span>
                       ) : (
                         "Update Password"
+                      )}
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => setActiveModal(null)} 
+                      className="w-full py-3 bg-white/5 hover:bg-white/10 rounded-xl font-medium transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              </>
+            )}
+
+            {activeModal === 'changeEmail' && (
+              <>
+                <div className="text-center mb-2">
+                  <h3 className="text-xl font-bold">Change Email</h3>
+                  <p className="text-gray-400 text-sm mt-1">Enter your new email address.</p>
+                </div>
+                
+                <form onSubmit={handleChangeEmail} className="flex flex-col gap-4">
+                  <input 
+                    type="email" 
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    required
+                    placeholder="new.email@example.com"
+                    className="w-full bg-[#2b2b2b] border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#3498db] transition-colors"
+                  />
+                  
+                  {emailMessage.text && (
+                    <div className={`p-3 rounded-xl text-sm font-medium text-center ${emailMessage.type === 'error' ? 'bg-red-500/10 text-red-500' : emailMessage.type === 'success' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-[#3498db]'}`}>
+                      {emailMessage.text}
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-3 mt-2">
+                    <button 
+                      type="submit"
+                      disabled={isUpdatingEmail || !newEmail}
+                      className="w-full py-3 bg-[#3498db] hover:bg-[#2980b9] disabled:bg-gray-600 disabled:text-gray-400 text-white rounded-xl font-bold transition-colors flex justify-center items-center h-12"
+                    >
+                      {isUpdatingEmail ? (
+                        <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></span>
+                      ) : (
+                        "Update Email"
+                      )}
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => setActiveModal(null)} 
+                      className="w-full py-3 bg-white/5 hover:bg-white/10 rounded-xl font-medium transition-colors"
+                    >
+                      {emailMessage.type === 'success' ? 'Close' : 'Cancel'}
+                    </button>
+                  </div>
+                </form>
+              </>
+            )}
+
+            {activeModal === 'changeUsername' && (
+              <>
+                <div className="text-center mb-2">
+                  <h3 className="text-xl font-bold">Change Username</h3>
+                  <p className="text-gray-400 text-sm mt-1">Set how you want to be called.</p>
+                </div>
+                
+                <form onSubmit={handleChangeUsername} className="flex flex-col gap-4">
+                  <input 
+                    type="text" 
+                    value={newUsername}
+                    onChange={(e) => setNewUsername(e.target.value)}
+                    required
+                    maxLength={30}
+                    placeholder="Your Username"
+                    className="w-full bg-[#2b2b2b] border border-gray-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#3498db] transition-colors"
+                  />
+                  
+                  {usernameMessage.text && (
+                    <div className={`p-3 rounded-xl text-sm font-medium text-center ${usernameMessage.type === 'error' ? 'bg-red-500/10 text-red-500' : usernameMessage.type === 'success' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-[#3498db]'}`}>
+                      {usernameMessage.text}
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-3 mt-2">
+                    <button 
+                      type="submit"
+                      disabled={isUpdatingUsername || !newUsername.trim()}
+                      className="w-full py-3 bg-[#3498db] hover:bg-[#2980b9] disabled:bg-gray-600 disabled:text-gray-400 text-white rounded-xl font-bold transition-colors flex justify-center items-center h-12"
+                    >
+                      {isUpdatingUsername ? (
+                        <span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></span>
+                      ) : (
+                        "Save Username"
                       )}
                     </button>
                     <button 

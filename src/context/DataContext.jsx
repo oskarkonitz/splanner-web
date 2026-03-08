@@ -43,8 +43,24 @@ export function DataProvider({ children }) {
 
   const [userMessages, setUserMessages] = useState([]);
 
+  // Funkcja aktualizująca ostatnią aktywność użytkownika
+  const updateLastSeen = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase
+          .from('profiles')
+          .update({ last_seen_at: new Date().toISOString() })
+          .eq('id', user.id);
+      }
+    } catch (error) {
+      console.error("Błąd aktualizacji aktywności:", error);
+    }
+  };
+
   useEffect(() => {
     fetchDashboardData();
+    updateLastSeen();
   }, []);
 
   const fetchDashboardData = async () => {
@@ -67,7 +83,7 @@ export function DataProvider({ children }) {
         supabase.from('schedule_entries').select('*'),
         supabase.from('schedule_cancellations').select('*'),
         supabase.from('custom_events').select('*'),
-        supabase.from('event_lists').select('*'), // <--- TUTAJ BYŁ BŁĄD (eventLists -> event_lists)
+        supabase.from('event_lists').select('*'), 
         supabase.from('semesters').select('*'),
         supabase.from('app_config').select('*'), 
         supabase.from('admins').select('user_id'),

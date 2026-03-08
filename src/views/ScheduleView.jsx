@@ -703,7 +703,7 @@ export default function ScheduleView({ onBack }) {
                       <input type="checkbox" className="accent-[#3498db]" checked={selectedLists.has(lst.id)} onChange={() => setSelectedLists(toggleFilter(selectedLists, lst.id))} />
                       <div className="flex items-center gap-2">
                         {lst.color && <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: lst.color }}></div>}
-                        <span className="text-sm">{lst.name}</span>
+                        <span className="text-sm text-white">{lst.name}</span>
                       </div>
                     </label>
                     <div className="flex items-center gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">

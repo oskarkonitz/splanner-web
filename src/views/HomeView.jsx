@@ -50,6 +50,7 @@ export default function HomeView() {
   const [currentTime, setCurrentTime] = useState(new Date())
 
   const [currentUserId, setCurrentUserId] = useState(null)
+  const [currentUser, setCurrentUser] = useState(null) // Dodany stan dla pełnego obiektu użytkownika
 
   const { 
     isLoading, dailyTasks, topics, exams, assignments, globalStats,
@@ -306,7 +307,10 @@ export default function HomeView() {
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) setCurrentUserId(user.id);
+      if (user) {
+        setCurrentUserId(user.id);
+        setCurrentUser(user);
+      }
     });
   }, []);
 
@@ -1312,10 +1316,15 @@ export default function HomeView() {
         ) : (
           <main className="flex-1 overflow-y-auto px-6 pb-24 md:p-10 pt-[calc(env(safe-area-inset-top)+1.5rem)]">
             
+            {/* ZMIENIONY NAGŁÓWEK */}
             <header className="flex justify-between items-start mb-10">
               <div>
-                <h1 className="text-3xl font-bold">{activeTab}</h1>
-                {activeTab === "Dashboard" && <p className="hidden md:block text-gray-400 mt-1">Welcome back! Here is your overview.</p>}
+                <h1 className="text-3xl font-bold">
+                  {activeTab === "Dashboard" 
+                    ? `Welcome back, ${currentUser?.user_metadata?.username || currentUser?.email?.split('@')[0] || 'User'}!` 
+                    : activeTab}
+                </h1>
+                {activeTab === "Dashboard" && <p className="hidden md:block text-gray-400 mt-1">Here is your overview for today.</p>}
               </div>
 
               <div className="flex items-center gap-3">
