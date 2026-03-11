@@ -891,13 +891,13 @@ export default function HomeView() {
                       </div>
                     </div>
                     
-                    <div className="flex-1 flex flex-col justify-center">
-                      <span className="text-xl font-bold text-white truncate">{nowNextItem.title}</span>
+                    <div className="flex-1 flex flex-col justify-center min-w-0">
+                      <span className="text-xl font-bold text-white break-words whitespace-normal">{nowNextItem.title}</span>
                       <div className="flex items-center gap-2 text-gray-400 text-sm mt-1">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                         <span>{isToday ? "Today" : nowNextItem.dateStr} • {nowNextItem.startTime} - {nowNextItem.endTime === "23:59" ? "End of day" : nowNextItem.endTime}</span>
                       </div>
-                      <span className="text-gray-500 text-sm mt-1 truncate">
+                      <span className="text-gray-500 text-sm mt-1 break-words whitespace-normal">
                         {nowNextItem.typeStr} {nowNextItem.subtitle ? `• ${nowNextItem.subtitle}` : ""}
                       </span>
                     </div>
@@ -908,9 +908,9 @@ export default function HomeView() {
                         
                         {displayLaterItems.length === 1 ? (
                           <div className="flex items-center justify-between text-xs w-full">
-                            <div className="flex items-center gap-2 truncate pr-2">
+                            <div className="flex items-center gap-2 pr-2 min-w-0">
                               <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: displayLaterItems[0].hexColor }}></div>
-                              <span className="text-gray-300 truncate">{displayLaterItems[0].title}</span>
+                              <span className="text-gray-300 break-words whitespace-normal">{displayLaterItems[0].title}</span>
                             </div>
                             <span className="text-gray-500 shrink-0">{displayLaterItems[0].startTime}</span>
                           </div>
@@ -932,9 +932,9 @@ export default function HomeView() {
                                   className={`absolute inset-0 flex items-center justify-between text-xs w-full ${isJumping ? '' : 'transition-transform duration-500 ease-in-out'}`}
                                   style={{ transform: `translateY(${translateY})` }}
                                 >
-                                  <div className="flex items-center gap-2 truncate pr-2">
+                                  <div className="flex items-center gap-2 pr-2 min-w-0">
                                     <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: item.hexColor }}></div>
-                                    <span className="text-gray-300 truncate">{item.title}</span>
+                                    <span className="text-gray-300 break-words whitespace-normal">{item.title}</span>
                                   </div>
                                   <span className="text-gray-500 shrink-0">{item.startTime}</span>
                                 </div>
@@ -981,8 +981,13 @@ export default function HomeView() {
                     <span className="text-gray-400 font-medium">Loading...</span>
                   ) : (
                     nextExam ? (
-                      <div className="flex flex-col items-center justify-center w-full">
-                        <span className="text-xl font-bold text-white w-full truncate px-2">{nextExam.title}</span>
+                      <div className="flex flex-col items-center justify-center w-full min-w-0">
+                        {subjects?.find(s => s.id === nextExam.subject_id) && (
+                          <span className="text-sm font-semibold text-gray-400 break-words whitespace-normal text-center px-2 mb-1">
+                            {subjects.find(s => s.id === nextExam.subject_id).name}
+                          </span>
+                        )}
+                        <span className="text-xl font-bold text-white w-full break-words whitespace-normal text-center px-2">{nextExam.title}</span>
                         <div className="flex items-center justify-center gap-2 text-gray-400 text-sm mt-2">
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                           <span>{nextExam.date} • {nextExam.time?.substring(0, 5) || "TBA"}</span>
@@ -1139,7 +1144,7 @@ export default function HomeView() {
                       <div className="flex flex-col min-w-0 flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: nextSubscription.subjColor }}></div>
-                          <span className="font-bold text-lg text-white truncate">{nextSubscription.name}</span>
+                          <span className="font-bold text-lg text-white break-words whitespace-normal">{nextSubscription.name}</span>
                         </div>
                         {nextSubscription.provider && <span className="text-xs text-gray-500 ml-4 truncate">{nextSubscription.provider}</span>}
                       </div>
