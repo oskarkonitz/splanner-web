@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import SubscriptionFormModal from '../components/SubscriptionFormModal';
 
-// Helper do obliczania NASTĘPNEJ daty płatności na podstawie startu i cyklu
+// Helper do obliczania NASTĘPNEJ daty płatności na podstawie startu i cyklu (Fallback dla starych danych)
 const getNextBillingDate = (billingDateStr, cycle) => {
   if (!billingDateStr) return null;
   const d = new Date(billingDateStr);
@@ -32,8 +32,17 @@ const getDaysUntil = (dateStr) => {
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 };
 
+// Bezpieczne formatowanie daty do YYYY-MM-DD z uwzględnieniem lokalnej strefy czasowej
+const formatDateLocal = (dateObj) => {
+  if (!dateObj) return '';
+  const year = dateObj.getFullYear();
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const day = String(dateObj.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export default function SubscriptionsView({ onBack }) {
-  const { subscriptions, subjects, deleteSubscription } = useData();
+  const { subscriptions, subjects, deleteSubscription, markSubscriptionAsPaid } = useData();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSub, setSelectedSub] = useState(null);
@@ -49,7 +58,7 @@ export default function SubscriptionsView({ onBack }) {
     return () => window.removeEventListener('click', closeMenu);
   }, []);
 
-  // Grupowanie subskrypcji
+  // Grupowanie subskrypcji z nową logiką opartą o next_payment_date
   const groupedSubs = useMemo(() => {
     let dueThisWeek = [];
     let upcoming = [];
@@ -66,7 +75,7 @@ export default function SubscriptionsView({ onBack }) {
       return matchName || matchProvider;
     });
 
-    // 2. Grupowanie
+    // 2. Grupowanie i kalkulacja statusów
     filtered.forEach(sub => {
       let isExpired = false;
       if (sub.expiry_date) {
@@ -80,11 +89,23 @@ export default function SubscriptionsView({ onBack }) {
         return;
       }
 
-      const nextDate = getNextBillingDate(sub.billing_date, sub.billing_cycle);
-      sub.nextDate = nextDate; // Tymczasowe zapisanie wyliczonej daty
+      // Używamy daty z bazy (nowe pola), w przeciwnym razie fallback na stare obliczenia
+      let rawNextDate = null;
+      if (sub.next_payment_date) {
+        rawNextDate = new Date(sub.next_payment_date);
+      } else {
+        rawNextDate = getNextBillingDate(sub.billing_date, sub.billing_cycle);
+      }
 
-      if (nextDate) {
-        const daysDiff = Math.ceil((nextDate - today) / (1000 * 60 * 60 * 24));
+      if (rawNextDate) {
+        rawNextDate.setHours(0,0,0,0);
+        sub.nextDate = rawNextDate;
+        
+        const daysDiff = Math.ceil((rawNextDate - today) / (1000 * 60 * 60 * 24));
+        sub.isOverdue = daysDiff < 0;
+        sub.daysUntil = daysDiff;
+
+        // Jeżeli zalega lub jest blisko, wrzucamy na górę (<= 7 dni)
         if (daysDiff <= 7) dueThisWeek.push(sub);
         else upcoming.push(sub);
       } else {
@@ -93,7 +114,7 @@ export default function SubscriptionsView({ onBack }) {
       }
     });
 
-    dueThisWeek.sort((a, b) => a.nextDate - b.nextDate);
+    dueThisWeek.sort((a, b) => (a.nextDate || 0) - (b.nextDate || 0));
     upcoming.sort((a, b) => (a.nextDate || 0) - (b.nextDate || 0));
 
     return { dueThisWeek, upcoming, inactive };
@@ -111,8 +132,9 @@ export default function SubscriptionsView({ onBack }) {
 
   const activeSubEnriched = useMemo(() => {
     if (!selectedSub) return null;
-    return (subscriptions || []).find(s => s.id === selectedSub.id);
-  }, [selectedSub, subscriptions]);
+    const allProcessed = [...groupedSubs.dueThisWeek, ...groupedSubs.upcoming, ...groupedSubs.inactive];
+    return allProcessed.find(s => s.id === selectedSub.id) || (subscriptions || []).find(s => s.id === selectedSub.id);
+  }, [selectedSub, subscriptions, groupedSubs]);
 
   const subjectMap = useMemo(() => {
     const map = {};
@@ -135,7 +157,7 @@ export default function SubscriptionsView({ onBack }) {
                 key={sub.id}
                 onClick={() => setSelectedSub(sub)}
                 onContextMenu={(e) => handleContextMenu(e, sub)}
-                className={`flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-all border ${isSelected ? 'bg-[#3498db]/10 border-[#3498db] shadow-sm' : 'bg-[#1c1c1e] border-gray-800 hover:border-gray-600'} ${isAlert && !isSelected ? 'border-red-500/30' : ''}`}
+                className={`flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-all border ${isSelected ? 'bg-[#3498db]/10 border-[#3498db] shadow-sm' : 'bg-[#1c1c1e] border-gray-800 hover:border-gray-600'} ${isAlert && !isSelected && sub.isOverdue ? 'border-red-500/30 bg-red-500/5' : ''}`}
               >
                 <div className="flex items-center gap-3 overflow-hidden">
                   <div className={`w-1.5 h-10 rounded-full ${!sub.is_active || sub.isExpired ? 'bg-gray-700' : ''}`} style={{ backgroundColor: (!sub.is_active || sub.isExpired) ? undefined : (subj?.color || '#8e44ad') }}></div>
@@ -156,8 +178,8 @@ export default function SubscriptionsView({ onBack }) {
                     {sub.cost} <span className="text-sm font-normal text-gray-500">{sub.currency}</span>
                   </div>
                   {sub.nextDate && sub.is_active && !sub.isExpired && (
-                     <div className={`text-xs ${isAlert ? 'text-red-400 font-bold' : 'text-gray-500'}`}>
-                       Due: {sub.nextDate.toISOString().split('T')[0]}
+                     <div className={`text-xs ${sub.isOverdue ? 'text-red-500 font-bold' : isAlert ? 'text-orange-400 font-bold' : 'text-gray-500'}`}>
+                       {sub.isOverdue ? `Overdue (${Math.abs(sub.daysUntil)} days)` : `Due: ${formatDateLocal(sub.nextDate)}`}
                      </div>
                   )}
                   {sub.isExpired && <div className="text-xs text-red-500">Expired</div>}
@@ -222,7 +244,7 @@ export default function SubscriptionsView({ onBack }) {
             </div>
           ) : (
             <>
-              {renderSection("Due This Week", groupedSubs.dueThisWeek, true)}
+              {renderSection("Due Soon & Overdue", groupedSubs.dueThisWeek, true)}
               {renderSection("Upcoming", groupedSubs.upcoming)}
               {renderSection("Inactive / Expired", groupedSubs.inactive)}
             </>
@@ -268,6 +290,10 @@ export default function SubscriptionsView({ onBack }) {
 
                 {/* Akcje pod nagłówkiem */}
                 <div className="p-4 flex gap-2 border-b border-gray-800 bg-[#1c1c1e] shrink-0">
+                  <button onClick={() => markSubscriptionAsPaid(activeSubEnriched)} className="flex-1 flex justify-center items-center gap-2 px-4 py-3 bg-green-500/10 text-green-500 hover:bg-green-500/20 rounded-xl font-bold transition-colors">
+                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                     Mark Paid
+                  </button>
                   <button onClick={() => { setSubToEdit(activeSubEnriched); setShowForm(true); }} className="flex-1 flex justify-center items-center gap-2 px-4 py-3 bg-white/5 hover:bg-white/10 rounded-xl font-bold transition-colors">
                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                      Edit
@@ -291,7 +317,25 @@ export default function SubscriptionsView({ onBack }) {
                     )}
                   </div>
 
-                  {/* Daty */}
+                  {/* Nowy blok dat płatności */}
+                  <div className="grid grid-cols-2 gap-4">
+                     <div className={`bg-[#2b2b2b] rounded-2xl border p-4 ${activeSubEnriched.isOverdue ? 'border-red-500/50' : 'border-gray-800'}`}>
+                       <div className="text-xs text-gray-500 font-bold uppercase mb-1">Next Payment</div>
+                       <div className={`font-medium ${activeSubEnriched.isOverdue ? 'text-red-500' : 'text-white'}`}>
+                         {activeSubEnriched.nextDate ? formatDateLocal(activeSubEnriched.nextDate) : 'Not set'}
+                       </div>
+                       {activeSubEnriched.isOverdue && <div className="text-xs text-red-500 mt-1">Overdue by {Math.abs(activeSubEnriched.daysUntil)} days</div>}
+                       {activeSubEnriched.daysUntil >= 0 && activeSubEnriched.daysUntil <= 7 && <div className="text-xs text-orange-400 mt-1">Due in {activeSubEnriched.daysUntil} days</div>}
+                     </div>
+                     <div className="bg-[#2b2b2b] rounded-2xl border border-gray-800 p-4">
+                       <div className="text-xs text-gray-500 font-bold uppercase mb-1">Last Paid</div>
+                       <div className="text-white font-medium">
+                         {activeSubEnriched.last_paid_at ? new Date(activeSubEnriched.last_paid_at).toLocaleDateString() : 'No record'}
+                       </div>
+                     </div>
+                  </div>
+
+                  {/* Daty Start/Koniec */}
                   <div className="grid grid-cols-2 gap-4">
                      <div className="bg-[#2b2b2b] rounded-2xl border border-gray-800 p-4">
                        <div className="text-xs text-gray-500 font-bold uppercase mb-1">Billing Start Date</div>
@@ -343,6 +387,10 @@ export default function SubscriptionsView({ onBack }) {
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={e => e.stopPropagation()}
         >
+          <button onClick={() => { markSubscriptionAsPaid(contextMenu.sub); setContextMenu(null); }} className="w-full text-left px-4 py-3 text-sm font-medium text-green-500 hover:bg-white/10 transition-colors border-b border-gray-800 flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+            Mark as Paid
+          </button>
           <button onClick={() => { setSubToEdit(contextMenu.sub); setShowForm(true); setContextMenu(null); }} className="w-full text-left px-4 py-3 text-sm font-medium text-white hover:bg-white/10 transition-colors border-b border-gray-800">
             Edit Subscription
           </button>

@@ -820,7 +820,7 @@ export function DataProvider({ children }) {
     } catch (error) { console.error("Błąd aktualizacji punktów:", error); }
   };
 
-  const saveSubscription = async (subData) => {
+const saveSubscription = async (subData) => {
     try {
       const payload = {
         subject_id: subData.subject_id || null,
@@ -836,13 +836,63 @@ export function DataProvider({ children }) {
       };
 
       if (subData.id) {
+        // Edycja istniejącej subskrypcji - nie nadpisujemy statusu płatności, 
+        // chyba że modyfikujemy całą logikę dat (zostawiamy to dla osobnej funkcji)
         await supabase.from('subscriptions').update(payload).eq('id', subData.id);
       } else {
+        // Nowa subskrypcja
         payload.id = generateId('subscr');
+        
+        // Inicjalizujemy nowe kolumny, aby system miał od razu poprawne dane do powiadomień
+        payload.next_payment_date = subData.billing_date || null;
+        payload.payment_status = 'pending';
+        payload.last_paid_at = null;
+
         await supabase.from('subscriptions').insert([payload]);
       }
       await fetchDashboardData();
-    } catch (error) { console.error("Błąd zapisu subskrypcji:", error); }
+    } catch (error) { 
+      console.error("Błąd zapisu subskrypcji:", error); 
+    }
+  };
+
+  // NOWA FUNKCJA: Oznaczanie subskrypcji jako opłaconej i przesuwanie daty
+  const markSubscriptionAsPaid = async (subscription) => {
+    try {
+      const today = new Date();
+      // Bierzemy aktualną datę płatności (lub startową jako fallback)
+      const currentNextDateStr = subscription.next_payment_date || subscription.billing_date;
+      let newNextDate = null;
+
+      if (currentNextDateStr) {
+        const d = new Date(currentNextDateStr);
+        
+        // Przesuwamy datę w oparciu o sztywny cykl
+        if (subscription.billing_cycle === 'monthly') {
+          d.setMonth(d.getMonth() + 1);
+        } else if (subscription.billing_cycle === 'yearly') {
+          d.setFullYear(d.getFullYear() + 1);
+        } else if (subscription.billing_cycle === 'weekly') {
+          d.setDate(d.getDate() + 7);
+        }
+        
+        // Zapisujemy nową datę, chyba że to płatność jednorazowa
+        if (subscription.billing_cycle !== 'one-time') {
+           newNextDate = d.toISOString().split('T')[0];
+        }
+      }
+
+      const payload = {
+        last_paid_at: today.toISOString(),
+        payment_status: 'paid', // Opcjonalnie: status można resetować z powrotem na 'pending' skryptem cyklicznym, ale dla historii to przydatne
+        next_payment_date: newNextDate
+      };
+
+      await supabase.from('subscriptions').update(payload).eq('id', subscription.id);
+      await fetchDashboardData();
+    } catch (error) {
+      console.error("Błąd oznaczania subskrypcji jako opłaconej:", error);
+    }
   };
 
   const deleteSubscription = async (id) => {
@@ -1064,7 +1114,7 @@ export function DataProvider({ children }) {
       saveTask, deleteTask, toggleTaskStatus, sweepCompletedTasks, saveTaskList, deleteTaskList,
       deleteSubject, saveSemester, deleteSemester, setCurrentSemester,
       saveGradeModule, deleteGradeModule, saveGrade, deleteGrade, updateGradePoints,
-      saveSubscription, deleteSubscription,
+      saveSubscription, deleteSubscription, markSubscriptionAsPaid, // <-- TUTAJ DODAJESZ!
       saveScheduleNote, saveBlockedDates, cancelClass, saveSubjectNote,
       saveAssignment, deleteAssignment, toggleAssignmentStatus, saveAssignmentNote
     }}>
