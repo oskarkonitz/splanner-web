@@ -10,10 +10,28 @@ import TodoHistoryView from './TodoHistoryView'
 import SubjectsView from './SubjectsView'
 import GradesView from './GradesView'
 import SubscriptionsView from './SubscriptionsView'
+import CountersView from './CountersView'
 import AchievementsView from './AchievementsView'
 import AdminPanelView from './AdminPanelView'
 import FeedbackView from './FeedbackView'
 import MinecraftNotebook from '../components/MinecraftNotebook' 
+
+const ICONS = {
+  clock: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>,
+  no_smoke: (
+    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 14H5m11 0v-2H5v2zm4 0h-2v-2h2v2z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9c0-1-1-1.5-1-2.5s1-1.5 1-2.5" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.929 4.929l14.142 14.142" />
+    </svg>
+  ),
+  smoke: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path></svg>,
+  music: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg>,
+  heart: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path></svg>,
+  star: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"></path></svg>,
+  calendar: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>,
+  award: <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path></svg>
+};
 
 const getNextBillingDate = (billingDateStr, cycle) => {
   if (!billingDateStr) return null;
@@ -59,7 +77,8 @@ export default function HomeView() {
     taskLists, subscriptions, settings,
     isAdmin,
     appConfig,
-    userMessages, markMessageAsRead 
+    userMessages, markMessageAsRead,
+    counters, isCountersEnabled 
   } = useData()
 
   const [isStandalone, setIsStandalone] = useState(false);
@@ -290,7 +309,6 @@ export default function HomeView() {
         const wMod = parseFloat(mod.weight);
         const moduleWeightFactor = (isNaN(wMod) ? 0.0 : wMod) / 100.0;
         
-        // Zawsze dodajemy wagę modułu do mianownika
         totalGradedWeight += moduleWeightFactor;
 
         if (modGrades.length > 0) {
@@ -323,7 +341,6 @@ export default function HomeView() {
         const wEcts = parseFloat(sub.weight);
         const ects = isNaN(wEcts) ? 0.0 : wEcts;
         
-        // Jeśli ma 0 ECTS, to nie psujemy średniej i całkowicie go omijamy
         if (ects > 0) {
           weightedSum += grade * ects;
           totalECTS += ects;
@@ -431,7 +448,8 @@ export default function HomeView() {
   };
 
   const mainTabs = ["Dashboard", "Study Plan", "Todo", "Schedule"];
-  const moreTabs = ["Task History", "Exam Database & Archive", "Achievements", "Subjects & Semesters", "Grades", "Subscriptions"];
+  const baseMoreTabs = ["Task History", "Exam Database & Archive", "Achievements", "Subjects & Semesters", "Grades", "Subscriptions"];
+  const moreTabs = isCountersEnabled ? [...baseMoreTabs, "Counters"] : baseMoreTabs;
 
   useEffect(() => {
     const isPWA = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
@@ -550,6 +568,11 @@ export default function HomeView() {
     
     return { ...target, subjColor: subj?.color || '#8e44ad' };
   }, [subscriptions, subjects]);
+
+  const pinnedCounter = useMemo(() => {
+    if (!counters || counters.length === 0) return null;
+    return counters.find(c => c.is_pinned);
+  }, [counters]);
 
   const tasksScrollRef = useRef(null);
   const shoppingScrollRef = useRef(null);
@@ -1053,6 +1076,55 @@ export default function HomeView() {
             </div>
           )}
 
+          {pinnedCounter && (
+            <div className="break-inside-avoid mb-6 inline-block w-full">
+              <div 
+                onClick={() => setActiveTab('Counters')}
+                className="bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] cursor-pointer hover:bg-white/5 transition-colors relative overflow-hidden group transform-gpu z-0"
+              >
+                 <div 
+                    className="absolute -right-6 -top-6 w-24 h-24 rounded-full opacity-10 group-hover:scale-110 transition-transform pointer-events-none" 
+                    style={{ backgroundColor: pinnedCounter.color || '#3498db' }}
+                  ></div>
+
+                  <div className="flex justify-between items-center mb-3 relative z-10">
+                    <span className="text-xs font-bold uppercase tracking-wider" style={{ color: pinnedCounter.color || '#3498db' }}>
+                      {pinnedCounter.type === 'count_up' ? 'Time Since' : 'Time Until'}
+                    </span>
+                    <div style={{ color: pinnedCounter.color || '#3498db' }} className="opacity-80">
+                      {ICONS[pinnedCounter.icon] || ICONS['clock']}
+                    </div>
+                  </div>
+
+                  <div className="flex-1 flex flex-col justify-center relative z-10">
+                    <span className="text-lg font-bold text-white mb-2 break-words whitespace-normal">{pinnedCounter.title}</span>
+                    
+                    {(() => {
+                      const target = new Date(pinnedCounter.target_date).getTime();
+                      const now = currentTime.getTime();
+                      let diffMs = pinnedCounter.type === 'count_up' ? now - target : target - now;
+                      if (diffMs < 0) { diffMs = Math.abs(diffMs); }
+
+                      const d = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                      const h = Math.floor((diffMs / (1000 * 60 * 60)) % 24);
+                      const m = Math.floor((diffMs / 1000 / 60) % 60);
+                      const s = Math.floor((diffMs / 1000) % 60);
+
+                      return (
+                        <div className="flex items-baseline gap-3">
+                          {d > 0 && <div className="flex flex-col"><span className="text-2xl font-black text-white">{d}</span><span className="text-[9px] font-bold text-gray-500 uppercase">Days</span></div>}
+                          <div className="flex flex-col"><span className="text-2xl font-black text-white">{h}</span><span className="text-[9px] font-bold text-gray-500 uppercase">Hours</span></div>
+                          <div className="flex flex-col"><span className="text-2xl font-black text-white">{m}</span><span className="text-[9px] font-bold text-gray-500 uppercase">Mins</span></div>
+                          <div className="flex flex-col"><span className="text-2xl font-black text-white w-8">{s}</span><span className="text-[9px] font-bold text-gray-500 uppercase">Secs</span></div>
+                        </div>
+                      );
+                    })()}
+
+                  </div>
+              </div>
+            </div>
+          )}
+
           {layoutConfig.tasks && (
             <div className="break-inside-avoid mb-6 inline-block w-full">
               <div 
@@ -1363,6 +1435,8 @@ export default function HomeView() {
           <GradesView onBack={() => setActiveTab("More")} />
         ) : activeTab === "Subscriptions" ? (
           <SubscriptionsView onBack={() => setActiveTab("More")} />
+        ) : activeTab === "Counters" ? (
+          <CountersView onBack={() => setActiveTab("More")} />
         ) : activeTab === "Achievements" ? (
           <AchievementsView onBack={() => setActiveTab("More")} />
         ) : activeTab === "Admin" ? (                                    
@@ -1438,7 +1512,7 @@ export default function HomeView() {
               </div>
             )}
 
-            {activeTab !== "Dashboard" && activeTab !== "More" && activeTab !== "Settings" && activeTab !== "Schedule" && activeTab !== "Exam Database & Archive" && activeTab !== "Study Plan" && activeTab !== "Todo" && activeTab !== "Task History" && activeTab !== "Subjects & Semesters" && activeTab !== "Grades" && activeTab !== "Subscriptions" && activeTab !== "Achievements" && activeTab !== "Admin" && activeTab !== "Feedback" && (
+            {activeTab !== "Dashboard" && activeTab !== "More" && activeTab !== "Settings" && activeTab !== "Schedule" && activeTab !== "Exam Database & Archive" && activeTab !== "Study Plan" && activeTab !== "Todo" && activeTab !== "Task History" && activeTab !== "Subjects & Semesters" && activeTab !== "Grades" && activeTab !== "Subscriptions" && activeTab !== "Counters" && activeTab !== "Achievements" && activeTab !== "Admin" && activeTab !== "Feedback" && (
               <div className="bg-[#1c1c1e] p-10 rounded-3xl border border-white/5 flex flex-col items-center justify-center text-gray-500 min-h-[300px]">
                 <span className="text-4xl mb-4">🚧</span>
                 <p>Widok <strong>{activeTab}</strong> jest w budowie...</p>

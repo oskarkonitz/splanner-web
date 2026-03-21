@@ -34,6 +34,10 @@ export function DataProvider({ children }) {
   const [subscriptions, setSubscriptions] = useState([]); 
   const [subjectNotes, setSubjectNotes] = useState([]); 
   
+  // NOWE: Stany dla modułu liczników
+  const [counters, setCounters] = useState([]);
+  const [isCountersEnabled, setIsCountersEnabled] = useState(false);
+  
   const [achievements, setAchievements] = useState([]); 
   const [popupQueue, setPopupQueue] = useState([]); 
 
@@ -60,13 +64,35 @@ export function DataProvider({ children }) {
 
   useEffect(() => {
     fetchDashboardData();
+    
+    // Wywołanie początkowe
     updateLastSeen();
+    
+    // Heartbeat: aktualizuj status "Last Seen" co 3 minuty, dopóki karta jest otwarta
+    const heartbeatInterval = setInterval(() => {
+      updateLastSeen();
+    }, 3 * 60 * 1000);
+
+    return () => clearInterval(heartbeatInterval);
   }, []);
 
   const fetchDashboardData = async () => {
     setIsLoading(true);
     setIsBackgroundLoading(true); 
     try {
+      // Pobieramy informacje o użytkowniku i jego uprawnieniach do modułu counters
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('is_counters_enabled')
+          .eq('id', user.id)
+          .single();
+        if (profileData) {
+          setIsCountersEnabled(profileData.is_counters_enabled);
+        }
+      }
+
       const [
         tasksRes, taskListsRes, topicsRes, examsRes, statsRes, 
         settingsRes, subjectsRes, scheduleRes, cancellationsRes, 
@@ -128,7 +154,8 @@ export function DataProvider({ children }) {
 
       const [
         gradeModulesRes, gradesRes, blockedRes, subscriptionsRes,
-        achievementsRes, feedbackRes, subjectNotesRes, notesRes, userMessagesRes
+        achievementsRes, feedbackRes, subjectNotesRes, notesRes, userMessagesRes,
+        countersRes // NOWE
       ] = await Promise.all([
         supabase.from('grade_modules').select('*'),
         supabase.from('grades').select('*'),
@@ -138,7 +165,8 @@ export function DataProvider({ children }) {
         supabase.from('feedback').select('*').order('created_at', { ascending: false }),
         supabase.from('subject_notes').select('*'),
         supabase.from('schedule_notes').select('*'), 
-        supabase.from('user_messages').select('*')
+        supabase.from('user_messages').select('*'),
+        supabase.from('counters').select('*') // NOWE
       ]);
 
       if (gradeModulesRes.data) setGradeModules(gradeModulesRes.data);
@@ -147,6 +175,7 @@ export function DataProvider({ children }) {
       if (notesRes.data) setScheduleNotes(notesRes.data);
       if (userMessagesRes?.data) setUserMessages(userMessagesRes.data); 
       if (blockedRes.data) setBlockedDates(blockedRes.data);
+      if (countersRes?.data) setCounters(countersRes.data); // NOWE
       
       if (achievementsRes.data) {
         setAchievements(achievementsRes.data.map(a => a.achievement_id));
@@ -326,6 +355,55 @@ export function DataProvider({ children }) {
       setSettings(prev => ({ ...prev, [key]: value }));
     } catch (error) {
       console.error("Błąd aktualizacji ustawienia:", error);
+    }
+  };
+
+  // NOWE: Funkcje do obsługi Liczników (Counters)
+  const saveCounter = async (counterData, isEditMode) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const payload = {
+        user_id: user?.id,
+        title: counterData.title,
+        type: counterData.type,
+        target_date: counterData.target_date,
+        is_pinned: counterData.is_pinned || false,
+        icon: counterData.icon || 'clock',
+        color: counterData.color || '#3498db'
+      };
+
+      if (isEditMode) {
+        await supabase.from('counters').update(payload).eq('id', counterData.id);
+      } else {
+        payload.id = generateId('cnt');
+        await supabase.from('counters').insert([payload]);
+      }
+      await fetchDashboardData();
+    } catch (error) {
+      console.error("Błąd zapisu licznika:", error);
+    }
+  };
+
+  const deleteCounter = async (id) => {
+    try {
+      await supabase.from('counters').delete().eq('id', id);
+      await fetchDashboardData();
+    } catch (error) {
+      console.error("Błąd usuwania licznika:", error);
+    }
+  };
+
+  const toggleCounterPin = async (id, currentPinnedStatus) => {
+    try {
+      // Jeśli przypinamy, najpierw odpinamy wszystkie inne, by mieć tylko 1 na Dashboardzie
+      if (!currentPinnedStatus) {
+        await supabase.from('counters').update({ is_pinned: false }).neq('id', id);
+      }
+      // Aktualizujemy wybrany
+      await supabase.from('counters').update({ is_pinned: !currentPinnedStatus }).eq('id', id);
+      await fetchDashboardData();
+    } catch (error) {
+      console.error("Błąd przypinania licznika:", error);
     }
   };
 
@@ -836,14 +914,9 @@ const saveSubscription = async (subData) => {
       };
 
       if (subData.id) {
-        // Edycja istniejącej subskrypcji - nie nadpisujemy statusu płatności, 
-        // chyba że modyfikujemy całą logikę dat (zostawiamy to dla osobnej funkcji)
         await supabase.from('subscriptions').update(payload).eq('id', subData.id);
       } else {
-        // Nowa subskrypcja
         payload.id = generateId('subscr');
-        
-        // Inicjalizujemy nowe kolumny, aby system miał od razu poprawne dane do powiadomień
         payload.next_payment_date = subData.billing_date || null;
         payload.payment_status = 'pending';
         payload.last_paid_at = null;
@@ -856,18 +929,15 @@ const saveSubscription = async (subData) => {
     }
   };
 
-  // NOWA FUNKCJA: Oznaczanie subskrypcji jako opłaconej i przesuwanie daty
   const markSubscriptionAsPaid = async (subscription) => {
     try {
       const today = new Date();
-      // Bierzemy aktualną datę płatności (lub startową jako fallback)
       const currentNextDateStr = subscription.next_payment_date || subscription.billing_date;
       let newNextDate = null;
 
       if (currentNextDateStr) {
         const d = new Date(currentNextDateStr);
         
-        // Przesuwamy datę w oparciu o sztywny cykl
         if (subscription.billing_cycle === 'monthly') {
           d.setMonth(d.getMonth() + 1);
         } else if (subscription.billing_cycle === 'yearly') {
@@ -876,7 +946,6 @@ const saveSubscription = async (subData) => {
           d.setDate(d.getDate() + 7);
         }
         
-        // Zapisujemy nową datę, chyba że to płatność jednorazowa
         if (subscription.billing_cycle !== 'one-time') {
            newNextDate = d.toISOString().split('T')[0];
         }
@@ -884,7 +953,7 @@ const saveSubscription = async (subData) => {
 
       const payload = {
         last_paid_at: today.toISOString(),
-        payment_status: 'paid', // Opcjonalnie: status można resetować z powrotem na 'pending' skryptem cyklicznym, ale dla historii to przydatne
+        payment_status: 'paid', 
         next_payment_date: newNextDate
       };
 
@@ -982,7 +1051,6 @@ const saveSubscription = async (subData) => {
       currNum -= 86400000;
     }
 
-    // Dodawanie barier z egzaminów i prac domowych
     exams.forEach(ex => {
       if (ex.ignore_barrier || !ex.date) return;
       if (new Date(ex.date).getTime() >= todayNum) {
@@ -1054,14 +1122,12 @@ const saveSubscription = async (subData) => {
       }
     };
 
-    // Dystrybucja tematów egzaminów
     exams.forEach(exam => {
       let tList = topics.filter(t => t.exam_id === exam.id && t.status === "todo" && !t.locked);
       if (onlyUnscheduled) tList = tList.filter(t => !t.scheduled_date);
       distributeTopics(exam, tList);
     });
 
-    // Dystrybucja tematów prac domowych (teraz działają identycznie)
     assignments.forEach(hw => {
       let tList = topics.filter(t => t.assignment_id === hw.id && t.status === "todo" && !t.locked);
       if (onlyUnscheduled) tList = tList.filter(t => !t.scheduled_date);
@@ -1109,12 +1175,13 @@ const saveSubscription = async (subData) => {
       appConfig, isAdmin, updateAppConfig, 
       feedback, saveFeedback, replyToFeedback,
       updateSetting,
+      counters, isCountersEnabled, saveCounter, deleteCounter, toggleCounterPin, 
       fetchDashboardData, saveExam, deleteExam, saveCustomEvent, deleteCustomEvent, saveSubject,
       toggleTopicStatus, saveExamNote, saveTopic, deleteTopic, runPlanner,
       saveTask, deleteTask, toggleTaskStatus, sweepCompletedTasks, saveTaskList, deleteTaskList,
       deleteSubject, saveSemester, deleteSemester, setCurrentSemester,
       saveGradeModule, deleteGradeModule, saveGrade, deleteGrade, updateGradePoints,
-      saveSubscription, deleteSubscription, markSubscriptionAsPaid, // <-- TUTAJ DODAJESZ!
+      saveSubscription, deleteSubscription, markSubscriptionAsPaid,
       saveScheduleNote, saveBlockedDates, cancelClass, saveSubjectNote,
       saveAssignment, deleteAssignment, toggleAssignmentStatus, saveAssignmentNote
     }}>

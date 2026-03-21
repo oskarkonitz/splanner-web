@@ -196,6 +196,27 @@ export default function AdminPanelView({ onBack }) {
     }
   };
 
+  const handleToggleCountersStatus = async () => {
+    if (!selectedUser) return;
+    const isCurrentlyEnabled = selectedUser.is_counters_enabled;
+    
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ is_counters_enabled: !isCurrentlyEnabled })
+        .eq('id', selectedUser.id);
+        
+      if (error) throw error;
+      
+      const updatedUser = { ...selectedUser, is_counters_enabled: !isCurrentlyEnabled };
+      setSelectedUser(updatedUser);
+      setUsersList(usersList.map(u => u.id === selectedUser.id ? updatedUser : u));
+    } catch (err) {
+      console.error("Błąd zmiany dostępu do modułu liczników:", err);
+      alert("Failed to update counters module access.");
+    }
+  };
+
   const handleSendPasswordReset = async () => {
     if (!selectedUser || !selectedUser.email) return;
     if (!window.confirm(`Send a password reset email to ${selectedUser.email}?`)) return;
@@ -896,6 +917,24 @@ export default function AdminPanelView({ onBack }) {
                     className="bg-[#3498db] hover:bg-[#2980b9] text-white px-4 py-2 rounded-xl text-sm font-bold transition-colors whitespace-nowrap"
                   >
                     Save URL
+                  </button>
+                </div>
+              </div>
+
+              {/* Sekcja Feature Flags */}
+              <div className="border-t border-gray-800 pt-6">
+                <span className="text-xs font-bold text-[#f1c40f] uppercase block mb-4">Feature Flags</span>
+                
+                <div className="bg-[#2b2b2b] p-4 rounded-2xl border border-white/5 flex items-center justify-between">
+                  <div>
+                    <h4 className="text-white font-medium text-sm">Enable Counters Module</h4>
+                    <p className="text-xs text-gray-500 mt-0.5">Allows this user to access the experimental Counters feature.</p>
+                  </div>
+                  <button 
+                    onClick={handleToggleCountersStatus}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none shrink-0 ml-4 ${selectedUser.is_counters_enabled ? 'bg-[#3498db]' : 'bg-gray-700'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${selectedUser.is_counters_enabled ? 'translate-x-5' : 'translate-x-1'}`} />
                   </button>
                 </div>
               </div>
