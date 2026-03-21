@@ -50,7 +50,7 @@ export default function HomeView() {
   const [currentTime, setCurrentTime] = useState(new Date())
 
   const [currentUserId, setCurrentUserId] = useState(null)
-  const [currentUser, setCurrentUser] = useState(null) // Dodany stan dla pełnego obiektu użytkownika
+  const [currentUser, setCurrentUser] = useState(null) 
 
   const { 
     isLoading, dailyTasks, topics, exams, assignments, globalStats,
@@ -75,7 +75,6 @@ export default function HomeView() {
 
   const [tasksNeedScroll, setTasksNeedScroll] = useState(false);
   const [shoppingNeedScroll, setShoppingNeedScroll] = useState(false);
-
 
   const focusTime = useMemo(() => {
     if (!globalStats) return 0;
@@ -255,51 +254,80 @@ export default function HomeView() {
 
   const gpa = useMemo(() => {
     if (!subjects) return 0.0;
-    const convertToGradeScale = (val) => {
-      if (val <= 5.0) return val;
-      if (val >= 90) return 5.0;
-      if (val >= 80) return 4.5;
-      if (val >= 70) return 4.0;
-      if (val >= 60) return 3.5;
-      if (val >= 50) return 3.0;
+    
+    const THRESHOLDS = [
+      { grade: 5.0, minPercent: 90.0 },
+      { grade: 4.5, minPercent: 80.0 },
+      { grade: 4.0, minPercent: 70.0 },
+      { grade: 3.5, minPercent: 60.0 },
+      { grade: 3.0, minPercent: 50.0 }
+    ];
+
+    const percentToGrade = (percent) => {
+      if (percent === null || percent === undefined) return null;
+      for (let t of THRESHOLDS) {
+        if (percent >= t.minPercent) return t.grade;
+      }
       return 2.0;
     };
     
     const currentSem = (semesters || []).find(s => s.is_current);
     const filteredSubjects = currentSem ? subjects.filter(s => s.semester_id === currentSem.id) : subjects;
+    
     let totalECTS = 0.0;
     let weightedSum = 0.0;
     
     for (const sub of filteredSubjects) {
       const modules = (gradeModules || []).filter(m => m.subject_id === sub.id);
-      const allGrades = (grades || []).filter(g => g.subject_id === sub.id);
-      let subWeightedScore = 0.0;
-      let subGradedWeight = 0.0;
-      
+      const subjectGrades = (grades || []).filter(g => g.subject_id === sub.id);
+
+      let totalWeightedScore = 0.0;
+      let totalGradedWeight = 0.0;
+      let hasAnyGrade = false;
+
       for (const mod of modules) {
-        const modGrades = allGrades.filter(g => g.module_id === mod.id);
+        const modGrades = subjectGrades.filter(g => g.module_id === mod.id);
+        const wMod = parseFloat(mod.weight);
+        const moduleWeightFactor = (isNaN(wMod) ? 0.0 : wMod) / 100.0;
+        
+        // Zawsze dodajemy wagę modułu do mianownika
+        totalGradedWeight += moduleWeightFactor;
+
         if (modGrades.length > 0) {
           let sumW = 0.0;
-          let wSum = 0.0;
+          let modWeightedSum = 0.0;
           for (const g of modGrades) {
-            const w = g.weight || 0.0;
-            sumW += w;
-            wSum += g.value * w;
+            const w = parseFloat(g.weight);
+            const validW = isNaN(w) ? 0.0 : w;
+            const v = parseFloat(g.value);
+            const validV = isNaN(v) ? 0.0 : v;
+            
+            sumW += validW;
+            modWeightedSum += validV * validW;
           }
           if (sumW > 0) {
-            const modAvg = wSum / sumW;
-            const modFactor = (mod.weight || 0.0) / 100.0;
-            subWeightedScore += modAvg * modFactor;
-            subGradedWeight += modFactor;
+            const modAvg = modWeightedSum / sumW;
+            totalWeightedScore += modAvg * moduleWeightFactor;
+            hasAnyGrade = true;
           }
         }
       }
-      if (subGradedWeight > 0) {
-        const percent = subWeightedScore / subGradedWeight;
-        const scale = convertToGradeScale(percent);
-        const ects = sub.weight || 0.0;
-        weightedSum += scale * ects;
-        totalECTS += ects;
+
+      let percent = null;
+      if (hasAnyGrade && totalGradedWeight > 0) {
+        percent = totalWeightedScore / totalGradedWeight;
+      }
+
+      if (percent !== null) {
+        const grade = percentToGrade(percent);
+        const wEcts = parseFloat(sub.weight);
+        const ects = isNaN(wEcts) ? 0.0 : wEcts;
+        
+        // Jeśli ma 0 ECTS, to nie psujemy średniej i całkowicie go omijamy
+        if (ects > 0) {
+          weightedSum += grade * ects;
+          totalECTS += ects;
+        }
       }
     }
     return totalECTS === 0 ? 0 : (weightedSum / totalECTS);
@@ -492,20 +520,35 @@ export default function HomeView() {
       }
       if (isExp) return;
 
-      const nDate = getNextBillingDate(sub.billing_date, sub.billing_cycle);
-      if (nDate) {
-        upcoming.push({ ...sub, nextDate: nDate });
+      let rawNextDate = null;
+      if (sub.next_payment_date) {
+        rawNextDate = new Date(sub.next_payment_date);
+      } else {
+        rawNextDate = getNextBillingDate(sub.billing_date, sub.billing_cycle);
+      }
+
+      if (rawNextDate) {
+        rawNextDate.setHours(0,0,0,0);
+        
+        const daysDiff = Math.ceil((rawNextDate - today) / (1000 * 60 * 60 * 24));
+        
+        upcoming.push({ 
+          ...sub, 
+          nextDate: rawNextDate,
+          daysLeft: daysDiff,
+          isOverdue: daysDiff < 0
+        });
       }
     });
 
     if (upcoming.length === 0) return null;
-    upcoming.sort((a, b) => a.nextDate - b.nextDate);
+    
+    upcoming.sort((a, b) => a.daysLeft - b.daysLeft);
     
     const target = upcoming[0];
-    const days = getDaysUntil(target.nextDate);
     const subj = subjects?.find(s => s.id === target.subject_id);
     
-    return { ...target, daysLeft: days, subjColor: subj?.color || '#8e44ad' };
+    return { ...target, subjColor: subj?.color || '#8e44ad' };
   }, [subscriptions, subjects]);
 
   const tasksScrollRef = useRef(null);
@@ -1125,13 +1168,19 @@ export default function HomeView() {
             <div className="break-inside-avoid mb-6 inline-block w-full">
               <div 
                 onClick={() => { if(nextSubscription) setActiveTab('Subscriptions') }}
-                className={`bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border border-white/5 flex flex-col min-h-[140px] ${nextSubscription ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''}`}
+                className={`bg-[#1c1c1e] p-6 rounded-3xl shadow-lg border flex flex-col min-h-[140px] ${nextSubscription ? 'cursor-pointer hover:bg-white/5 transition-colors' : ''} ${nextSubscription?.isOverdue ? 'border-red-500/50' : 'border-white/5'}`}
               >
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Next Payment</span>
                   {nextSubscription && (
-                    <span className={`text-xs px-2 py-0.5 rounded-md font-bold ${nextSubscription.daysLeft === 0 ? 'bg-red-500/20 text-red-400' : 'bg-gray-800 text-gray-400'}`}>
-                      {nextSubscription.daysLeft === 0 ? 'Today' : `In ${nextSubscription.daysLeft} days`}
+                    <span className={`text-xs px-2 py-0.5 rounded-md font-bold ${
+                      nextSubscription.isOverdue ? 'bg-red-500/20 text-red-400' :
+                      nextSubscription.daysLeft === 0 ? 'bg-orange-500/20 text-orange-400' : 
+                      'bg-gray-800 text-gray-400'
+                    }`}>
+                      {nextSubscription.isOverdue ? `Overdue (${Math.abs(nextSubscription.daysLeft)}d)` : 
+                       nextSubscription.daysLeft === 0 ? 'Due Today' : 
+                       `In ${nextSubscription.daysLeft} days`}
                     </span>
                   )}
                 </div>
@@ -1144,14 +1193,16 @@ export default function HomeView() {
                       <div className="flex flex-col min-w-0 flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: nextSubscription.subjColor }}></div>
-                          <span className="font-bold text-lg text-white break-words whitespace-normal">{nextSubscription.name}</span>
+                          <span className={`font-bold text-lg break-words whitespace-normal ${nextSubscription.isOverdue ? 'text-red-400' : 'text-white'}`}>
+                            {nextSubscription.name}
+                          </span>
                         </div>
                         {nextSubscription.provider && <span className="text-xs text-gray-500 ml-4 truncate">{nextSubscription.provider}</span>}
                       </div>
                       
                       {nextSubscription.cost && (
                         <div className="flex flex-col items-end shrink-0">
-                          <span className="text-xl font-black text-gray-200">{nextSubscription.cost}</span>
+                          <span className={`text-xl font-black ${nextSubscription.isOverdue ? 'text-red-400' : 'text-gray-200'}`}>{nextSubscription.cost}</span>
                           <span className="text-[10px] text-gray-500 font-bold uppercase">{nextSubscription.currency}</span>
                         </div>
                       )}
@@ -1321,7 +1372,6 @@ export default function HomeView() {
         ) : (
           <main className="flex-1 overflow-y-auto px-6 pb-24 md:p-10 pt-[calc(env(safe-area-inset-top)+1.5rem)]">
             
-            {/* ZMIENIONY NAGŁÓWEK */}
             <header className="flex justify-between items-start mb-10">
               <div>
                 <h1 className="text-3xl font-bold">
