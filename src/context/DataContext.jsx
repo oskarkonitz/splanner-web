@@ -34,9 +34,12 @@ export function DataProvider({ children }) {
   const [subscriptions, setSubscriptions] = useState([]); 
   const [subjectNotes, setSubjectNotes] = useState([]); 
   
-  // NOWE: Stany dla modułu liczników
+  // Stany dla modułu liczników
   const [counters, setCounters] = useState([]);
   const [isCountersEnabled, setIsCountersEnabled] = useState(false);
+  
+  // NOWE: Stany dla modułu prywatnych notatników
+  const [userNotebooks, setUserNotebooks] = useState([]);
   
   const [achievements, setAchievements] = useState([]); 
   const [popupQueue, setPopupQueue] = useState([]); 
@@ -47,7 +50,6 @@ export function DataProvider({ children }) {
 
   const [userMessages, setUserMessages] = useState([]);
 
-  // Funkcja aktualizująca ostatnią aktywność użytkownika
   const updateLastSeen = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -65,10 +67,8 @@ export function DataProvider({ children }) {
   useEffect(() => {
     fetchDashboardData();
     
-    // Wywołanie początkowe
     updateLastSeen();
     
-    // Heartbeat: aktualizuj status "Last Seen" co 3 minuty, dopóki karta jest otwarta
     const heartbeatInterval = setInterval(() => {
       updateLastSeen();
     }, 3 * 60 * 1000);
@@ -80,7 +80,6 @@ export function DataProvider({ children }) {
     setIsLoading(true);
     setIsBackgroundLoading(true); 
     try {
-      // Pobieramy informacje o użytkowniku i jego uprawnieniach do modułu counters
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data: profileData } = await supabase
@@ -155,7 +154,7 @@ export function DataProvider({ children }) {
       const [
         gradeModulesRes, gradesRes, blockedRes, subscriptionsRes,
         achievementsRes, feedbackRes, subjectNotesRes, notesRes, userMessagesRes,
-        countersRes // NOWE
+        countersRes, userNotebooksRes // NOWE ZAPYTANIE
       ] = await Promise.all([
         supabase.from('grade_modules').select('*'),
         supabase.from('grades').select('*'),
@@ -166,7 +165,8 @@ export function DataProvider({ children }) {
         supabase.from('subject_notes').select('*'),
         supabase.from('schedule_notes').select('*'), 
         supabase.from('user_messages').select('*'),
-        supabase.from('counters').select('*') // NOWE
+        supabase.from('counters').select('*'),
+        supabase.from('user_notebooks').select('*') // POBIERANIE PRYWATNYCH ZESZYTÓW
       ]);
 
       if (gradeModulesRes.data) setGradeModules(gradeModulesRes.data);
@@ -175,7 +175,8 @@ export function DataProvider({ children }) {
       if (notesRes.data) setScheduleNotes(notesRes.data);
       if (userMessagesRes?.data) setUserMessages(userMessagesRes.data); 
       if (blockedRes.data) setBlockedDates(blockedRes.data);
-      if (countersRes?.data) setCounters(countersRes.data); // NOWE
+      if (countersRes?.data) setCounters(countersRes.data); 
+      if (userNotebooksRes?.data) setUserNotebooks(userNotebooksRes.data); // ZAPIS DO STANU
       
       if (achievementsRes.data) {
         setAchievements(achievementsRes.data.map(a => a.achievement_id));
@@ -358,7 +359,6 @@ export function DataProvider({ children }) {
     }
   };
 
-  // NOWE: Funkcje do obsługi Liczników (Counters)
   const saveCounter = async (counterData, isEditMode) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -395,11 +395,9 @@ export function DataProvider({ children }) {
 
   const toggleCounterPin = async (id, currentPinnedStatus) => {
     try {
-      // Jeśli przypinamy, najpierw odpinamy wszystkie inne, by mieć tylko 1 na Dashboardzie
       if (!currentPinnedStatus) {
         await supabase.from('counters').update({ is_pinned: false }).neq('id', id);
       }
-      // Aktualizujemy wybrany
       await supabase.from('counters').update({ is_pinned: !currentPinnedStatus }).eq('id', id);
       await fetchDashboardData();
     } catch (error) {
@@ -510,7 +508,6 @@ export function DataProvider({ children }) {
         await supabase.from('assignments').insert([payload]);
       }
 
-      // Logika tematów (topics) dla prac domowych identyczna jak dla egzaminów
       if (assignmentData.topicsRaw !== undefined) {
         const newNames = assignmentData.topicsRaw.split('\n')
           .map(t => t.replace(/^\d+\.\s*/, '').trim())
@@ -971,6 +968,7 @@ const saveSubscription = async (subData) => {
     } catch (error) { console.error("Błąd usuwania subskrypcji:", error); }
   };
 
+  // Logika zapisu notatnika przypisanego do PRZEDMIOTU
   const saveSubjectNote = async (subjectId, dataObj, lastOpenedPage) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -994,6 +992,44 @@ const saveSubscription = async (subData) => {
       await fetchDashboardData(); 
     } catch (error) {
       console.error("Błąd zapisywania notatnika przedmiotu:", error);
+    }
+  };
+
+  // NOWE: Logika zapisu prywatnego notatnika uzytkownika
+  const saveUserNotebook = async (notebookId, title, dataObj, lastOpenedPage) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      const payload = {
+        id: notebookId,
+        user_id: user?.id,
+        title: title,
+        data: dataObj,
+        last_opened_page: lastOpenedPage,
+        updated_at: new Date().toISOString()
+      };
+
+      const existing = userNotebooks.find(n => n.id === notebookId);
+
+      if (existing) {
+        await supabase.from('user_notebooks').update(payload).eq('id', existing.id);
+      } else {
+        await supabase.from('user_notebooks').insert([payload]);
+      }
+
+      await fetchDashboardData();
+    } catch (error) {
+      console.error("Błąd zapisywania prywatnego notatnika:", error);
+    }
+  };
+
+  // NOWE: Usuwanie prywatnego notatnika
+  const deleteUserNotebook = async (id) => {
+    try {
+      await supabase.from('user_notebooks').delete().eq('id', id);
+      await fetchDashboardData();
+    } catch (error) {
+      console.error("Błąd usuwania notatnika:", error);
     }
   };
 
@@ -1176,6 +1212,10 @@ const saveSubscription = async (subData) => {
       feedback, saveFeedback, replyToFeedback,
       updateSetting,
       counters, isCountersEnabled, saveCounter, deleteCounter, toggleCounterPin, 
+      
+      // NOWE: Eksport do kontekstu
+      userNotebooks, saveUserNotebook, deleteUserNotebook,
+      
       fetchDashboardData, saveExam, deleteExam, saveCustomEvent, deleteCustomEvent, saveSubject,
       toggleTopicStatus, saveExamNote, saveTopic, deleteTopic, runPlanner,
       saveTask, deleteTask, toggleTaskStatus, sweepCompletedTasks, saveTaskList, deleteTaskList,

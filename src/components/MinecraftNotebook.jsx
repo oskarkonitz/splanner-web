@@ -37,7 +37,8 @@ const PageEditor = React.memo(({ page, onBlur, registerRef }) => {
 });
 
 export default function MinecraftNotebook({ isOpen, onClose, subject }) {
-  const { subjectNotes, saveSubjectNote } = useData();
+  // Pobieramy logikę dla obu typów notatników
+  const { subjectNotes, saveSubjectNote, userNotebooks, saveUserNotebook } = useData();
   
   const [isAnimatingIn, setIsAnimatingIn] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
@@ -68,15 +69,22 @@ export default function MinecraftNotebook({ isOpen, onClose, subject }) {
       setShowCover(true);
       
       try {
-        const safeSubjectNotes = Array.isArray(subjectNotes) ? subjectNotes : [];
-        const existingNote = safeSubjectNotes.find(n => n.subject_id === subject.id);
+        // ROZPOZNAWANIE TYPU NOTATNIKA I POBIERANIE DANYCH
+        let existingNote = null;
+        if (subject.isCustomNotebook) {
+          const safeUserNotebooks = Array.isArray(userNotebooks) ? userNotebooks : [];
+          existingNote = safeUserNotebooks.find(n => n.id === subject.id);
+        } else {
+          const safeSubjectNotes = Array.isArray(subjectNotes) ? subjectNotes : [];
+          existingNote = safeSubjectNotes.find(n => n.subject_id === subject.id);
+        }
         
         if (existingNote && Array.isArray(existingNote.data?.pages) && existingNote.data.pages.length > 0) {
           const loadedPages = existingNote.data.pages.map(p => ({ ...p }));
           setPages(loadedPages);
           pagesRef.current = loadedPages;
           
-          let targetPage = existingNote.last_opened_page || 0;
+          let targetPage = parseInt(existingNote.last_opened_page) || 0;
           if (targetPage >= loadedPages.length) {
             targetPage = loadedPages.length - 1;
           }
@@ -103,7 +111,7 @@ export default function MinecraftNotebook({ isOpen, onClose, subject }) {
       
       return () => clearTimeout(timer);
     }
-  }, [isOpen, subject, subjectNotes, isDesktop]);
+  }, [isOpen, subject, subjectNotes, userNotebooks, isDesktop]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -204,8 +212,11 @@ export default function MinecraftNotebook({ isOpen, onClose, subject }) {
 
     if (saveData) {
       syncActivePagesToState();
-      if (saveSubjectNote) {
-        saveSubjectNote(subject.id, { pages: pagesRef.current }, currentPage);
+      // ZAPIS W ZALEŻNOŚCI OD TYPU
+      if (subject.isCustomNotebook) {
+        if (saveUserNotebook) saveUserNotebook(subject.id, subject.name, { pages: pagesRef.current }, currentPage.toString());
+      } else {
+        if (saveSubjectNote) saveSubjectNote(subject.id, { pages: pagesRef.current }, currentPage.toString());
       }
     }
     

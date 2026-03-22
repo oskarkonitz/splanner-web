@@ -78,7 +78,10 @@ export default function HomeView() {
     isAdmin,
     appConfig,
     userMessages, markMessageAsRead,
-    counters, isCountersEnabled 
+    counters, isCountersEnabled,
+    
+    // Pobieramy prywatne notatniki do nowej listy
+    userNotebooks, saveUserNotebook, deleteUserNotebook
   } = useData()
 
   const [isStandalone, setIsStandalone] = useState(false);
@@ -89,6 +92,10 @@ export default function HomeView() {
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
 
   const [notebookSubject, setNotebookSubject] = useState(null);
+  
+  // Stany dla modalu listy notatników
+  const [isNotebookListOpen, setIsNotebookListOpen] = useState(false);
+  const [newNotebookTitle, setNewNotebookTitle] = useState('');
 
   const [laterTodayIndex, setLaterTodayIndex] = useState(0);
 
@@ -837,6 +844,30 @@ export default function HomeView() {
     }
   }
 
+  // Funkcja tworzenia nowego prywatnego notatnika
+  const handleCreateCustomNotebook = async (e) => {
+    e.preventDefault();
+    if (!newNotebookTitle.trim()) return;
+    const newId = `unb_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    await saveUserNotebook(
+      newId, 
+      newNotebookTitle.trim(), 
+      { pages: [{ id: `p_${Date.now()}_1`, content: '' }, { id: `p_${Date.now()}_2`, content: '' }] }, 
+      '0'
+    );
+    setNewNotebookTitle('');
+    setIsNotebookListOpen(false);
+    setNotebookSubject({ id: newId, name: newNotebookTitle.trim(), isCustomNotebook: true });
+  };
+
+  // Usuwanie prywatnego notatnika
+  const handleDeleteCustomNotebook = async (e, id) => {
+    e.stopPropagation();
+    if(window.confirm("Are you sure you want to permanently delete this notebook?")) {
+      await deleteUserNotebook(id);
+    }
+  };
+
   const renderDashboardWidgets = () => {
     const { isNow, isStartingSoon, progress, isToday, countdownStr } = getNowNextState();
     const examState = getNextExamState();
@@ -941,7 +972,7 @@ export default function HomeView() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              setNotebookSubject(nowNextItem.subject);
+                              setNotebookSubject({ id: nowNextItem.subject.id, name: nowNextItem.subject.name, isCustomNotebook: false });
                             }}
                             className="p-1.5 text-yellow-500 hover:text-yellow-400 bg-yellow-500/10 hover:bg-yellow-500/20 rounded-lg transition-colors border border-yellow-500/20"
                             title="Open Notebook"
@@ -1617,6 +1648,124 @@ export default function HomeView() {
         </nav>
       </div>
 
+      {/* Przycisk otwierający biblioteczkę (modal) */}
+      <button
+        onClick={() => setIsNotebookListOpen(true)}
+        className="fixed bottom-[100px] md:bottom-10 right-6 z-40 bg-[#1c1c1e] text-[#f1c40f] border border-[#f1c40f]/30 p-4 md:px-5 md:py-3 rounded-full md:rounded-2xl shadow-2xl flex items-center gap-2 hover:bg-[#f1c40f]/10 transition-all hover:scale-105 group"
+        title="My Notebooks"
+      >
+        <svg className="w-6 h-6 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+        <span className="hidden md:block font-bold text-sm">Notebooks</span>
+      </button>
+
+      {/* MODAL LISTY NOTATNIKÓW (BIBLIOTECZKA) */}
+      {isNotebookListOpen && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex justify-center items-center p-4">
+          <div className="bg-[#1c1c1e] rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-gray-700 shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
+            
+            <div className="flex justify-between items-center p-6 border-b border-gray-800 sticky top-0 bg-[#1c1c1e] z-10">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <svg className="w-5 h-5 text-[#f1c40f]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+                My Library
+              </h2>
+              <button onClick={() => setIsNotebookListOpen(false)} className="text-gray-400 hover:text-white p-2">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-8">
+              
+              {/* NOWY NOTATNIK */}
+              <div>
+                <span className="text-xs font-bold text-gray-500 uppercase block mb-3">Create Custom Notebook</span>
+                <form onSubmit={handleCreateCustomNotebook} className="flex gap-2">
+                  <input 
+                    type="text" 
+                    value={newNotebookTitle}
+                    onChange={e => setNewNotebookTitle(e.target.value)}
+                    placeholder="e.g. My Diary, Project Ideas..."
+                    className="flex-1 bg-[#2b2b2b] text-white px-4 py-3 rounded-xl border border-gray-700 focus:border-[#f1c40f] focus:outline-none"
+                  />
+                  <button 
+                    type="submit"
+                    disabled={!newNotebookTitle.trim()}
+                    className="bg-[#f1c40f] hover:bg-[#f39c12] text-black px-6 py-3 rounded-xl font-bold transition-colors disabled:opacity-50"
+                  >
+                    Create
+                  </button>
+                </form>
+              </div>
+
+              {/* PRYWATNE ZESZYTY */}
+              <div>
+                <span className="text-xs font-bold text-[#f1c40f] uppercase block mb-3">Private Notebooks</span>
+                {(!userNotebooks || userNotebooks.length === 0) ? (
+                  <div className="text-gray-500 text-sm bg-[#2b2b2b] p-4 rounded-xl border border-white/5 text-center">
+                    You haven't created any custom notebooks yet.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {userNotebooks.map(nb => (
+                      <div 
+                        key={nb.id}
+                        onClick={() => {
+                          setNotebookSubject({ id: nb.id, name: nb.title, isCustomNotebook: true });
+                          setIsNotebookListOpen(false);
+                        }}
+                        className="bg-[#2b2b2b] p-4 rounded-xl border border-white/5 hover:border-[#f1c40f]/50 cursor-pointer flex items-center justify-between group transition-colors"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-lg bg-[#f1c40f]/20 text-[#f1c40f] flex items-center justify-center shrink-0">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+                          </div>
+                          <span className="font-bold text-white truncate">{nb.title}</span>
+                        </div>
+                        <button 
+                          onClick={(e) => handleDeleteCustomNotebook(e, nb.id)}
+                          className="p-2 text-gray-500 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* ZESZYTY PRZEDMIOTOWE */}
+              <div className="pt-6 border-t border-gray-800">
+                <span className="text-xs font-bold text-[#3498db] uppercase block mb-3">Subject Notebooks</span>
+                {(!subjects || subjects.length === 0) ? (
+                  <div className="text-gray-500 text-sm bg-[#2b2b2b] p-4 rounded-xl border border-white/5 text-center">
+                    No subjects found. Create subjects to get automatic notebooks for them.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {subjects.map(sub => (
+                      <div 
+                        key={sub.id}
+                        onClick={() => {
+                          setNotebookSubject({ id: sub.id, name: sub.name, isCustomNotebook: false });
+                          setIsNotebookListOpen(false);
+                        }}
+                        className="bg-[#2b2b2b] p-4 rounded-xl border border-white/5 hover:bg-white/5 cursor-pointer flex items-center gap-3 transition-colors"
+                      >
+                        <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${sub.color}20`, color: sub.color }}>
+                          <span className="font-black text-sm">{sub.short_name || sub.name.substring(0, 2).toUpperCase()}</span>
+                        </div>
+                        <span className="font-bold text-white truncate">{sub.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* COMPONENT NOTATNIKA WŁAŚCIWEGO */}
       <MinecraftNotebook 
         isOpen={!!notebookSubject} 
         onClose={() => setNotebookSubject(null)} 
